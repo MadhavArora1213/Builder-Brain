@@ -33,6 +33,7 @@ export default function Builder() {
   const [previewKey, setPreviewKey] = useState(0);
   const [rightTab, setRightTab] = useState("preview");
   const [selectedFile, setSelectedFile] = useState(null);
+  const [publishing, setPublishing] = useState(false);
   const firstSent = useRef(false);
   const scrollRef = useRef(null);
   const atBottom = useRef(true);
@@ -119,6 +120,18 @@ export default function Builder() {
   const retry = async () => { try { await api.post(`/projects/${projectId}/retry`); toast.success("Retrying…"); fetchAll(); } catch {} };
   const refreshPreview = async () => { setPreviewKey((k) => k + 1); try { await api.get(`/projects/${projectId}/sandbox-status`); fetchAll(); } catch {} };
   const loadLogs = async () => { setShowLogs((s) => !s); try { const { data } = await api.get(`/projects/${projectId}/logs`); setLogs(data.logs || ""); } catch {} };
+  const publishToGithub = async () => {
+    setPublishing(true);
+    try {
+      const { data } = await api.post(`/github/projects/${projectId}/publish`);
+      toast.success(`Published to ${data.repository}`);
+      await fetchAll();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "GitHub publish failed");
+    } finally {
+      setPublishing(false);
+    }
+  };
 
   const openFile = (path) => {
     setRightTab("code");
@@ -155,6 +168,16 @@ export default function Builder() {
               style={{ borderColor: "var(--border)", color: "var(--foreground)" }}>
               <RotateCw className="w-3.5 h-3.5" /> Retry
             </button>
+          )}
+          {status === "complete" && project.workflow?.github?.status === "published" && (
+           <span className="font-mono text-[10px]" style={{ color: "var(--moss)" }}>Published to GitHub</span>
+          )}
+          {status === "complete" && project.workflow?.github?.status !== "published" && (
+           <button onClick={publishToGithub} disabled={publishing}
+             className="font-mono text-[10px] border rounded-sm px-2 py-1 disabled:opacity-50"
+             style={{ borderColor: "var(--border)", color: "var(--forest)" }}>
+             {publishing ? "Publishing…" : "Publish to GitHub"}
+           </button>
           )}
         </div>
       </header>

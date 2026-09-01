@@ -15,11 +15,14 @@ from langgraph.graph import StateGraph, END
 import llm
 import mcp_client as mcp
 import config
+import github_router
+import logging
 from db import AsyncSessionLocal, log_event
 from models import Project, Message, ProjectFile, Skill, User, WorkflowRun, SandboxSession, AgentExecution
 
 MAX_RETRIES = 2
 _running_tasks: dict = {}
+logger = logging.getLogger("grizon.orchestrator")
 
 
 def now_iso():
@@ -702,6 +705,13 @@ async def complete_node(state: BState) -> BState:
         return state
     passed = test.get("status") == "PASS"
     await set_workflow(state["project_id"], status="complete" if passed else "failed")
+    if passed:
+        try:
+            github_result = await github_router.publish_project(state["project_id"], state["owner_id"])
+            await set_workflow(state["project_id"], github=github_result)
+        except Exception as exc:
+            logger.error("GitHub publish failed for project %s: %s", state["project_id"], exc)
+            await set_workflow(state["project_id"], github={"status": "failed", "error": str(exc)})
     if test.get("prd"):
         await add_message(project, "assistant", "prd", test["prd"], agent="manager",
                           data={"status": test.get("status")})

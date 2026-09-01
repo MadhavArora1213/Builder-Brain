@@ -39,6 +39,20 @@ class User(Base):
     )
 
 
+class GithubConnection(Base):
+    __tablename__ = "github_connections"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    installation_id = Column(String, nullable=True)
+    account_login = Column(String, nullable=False)
+    access_token = Column(Text, nullable=True)
+    repository = Column(String, nullable=True)
+    branch = Column(String, nullable=False, default="main")
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
 class Project(Base):
     __tablename__ = "projects"
     
