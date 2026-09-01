@@ -1,8 +1,12 @@
+import traceback
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy import select
+from datetime import datetime, timezone
 
 from auth import get_current_user
-from db import db
+from db import AsyncSessionLocal
+from models import Project
 from projects_router import owned_project
 import mcp_client as mcp
 import orchestrator as orch
@@ -27,8 +31,12 @@ class AnswersBody(BaseModel):
 
 @router.post("/{project_id}/message")
 async def send_message(project_id: str, body: MessageBody, user: dict = Depends(get_current_user)):
-    project = await owned_project(project_id, user)
-    return await orch.handle_user_message(project, body.content)
+    try:
+        project = await owned_project(project_id, user)
+        return await orch.handle_user_message(project, body.content)
+    except Exception as e:
+        traceback.print_exc()
+        raise
 
 
 @router.post("/{project_id}/answers")
@@ -83,7 +91,13 @@ async def sandbox_status(project_id: str, user: dict = Depends(get_current_user)
     # Auto-update preview url if a new tunnel appeared
     tunnel = res.get("tunnel_url") if isinstance(res, dict) else None
     if tunnel and tunnel != project.get("preview_url"):
-        await db.projects.update_one({"id": project_id}, {"$set": {"preview_url": tunnel}})
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(Project).filter(Project.id == project_id))
+            proj = result.scalars().first()
+            if proj:
+                proj.preview_url = tunnel
+                proj.updated_at = datetime.utcnow()
+                await session.commit()
     return res
 
 

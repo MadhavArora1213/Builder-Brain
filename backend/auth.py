@@ -6,8 +6,11 @@ import httpx
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Request, Response, HTTPException, Depends
 from pydantic import BaseModel, EmailStr
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update
 
-from db import db, audit
+from db import AsyncSessionLocal, audit
+from models import User
 
 JWT_ALGORITHM = "HS256"
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -54,10 +57,8 @@ def _client_id() -> str:
 
 def public_user(u: dict) -> dict:
     return {
-        "id": u["id"], "email": u["email"], "name": u.get("name", ""),
-        "role": u.get("role", "user"), "picture": u.get("picture", ""),
-        "mcp_client_id": u.get("mcp_client_id", ""),
-        "created_at": u.get("created_at"),
+        "id": u.get("id"), "email": u.get("email"), "name": u.get("name", ""),
+        "role": u.get("role", "user"), "created_at": u.get("created_at"),
     }
 
 
@@ -75,10 +76,19 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
-    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found")
-    return user
+    
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(User).filter(User.id == payload["sub"]))
+        user = result.scalars().first()
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        return {
+            "id": user.id, "email": user.email, "name": user.name or "",
+            "role": user.role, "created_at": user.created_at.isoformat(),
+            "password_hash": user.password_hash,
+            "failed_attempts": user.failed_attempts,
+            "locked_until": user.locked_until.isoformat() if user.locked_until else None,
+        }
 
 
 async def require_admin(user: dict = Depends(get_current_user)) -> dict:
@@ -100,29 +110,37 @@ class LoginBody(BaseModel):
 
 async def _create_user(email: str, name: str, password: str = None,
                        picture: str = "", role: str = "user") -> dict:
-    doc = {
-        "id": str(uuid.uuid4()),
-        "email": email.lower(),
-        "name": name or email.split("@")[0],
-        "role": role,
-        "picture": picture,
-        "mcp_client_id": _client_id(),
-        "auth_provider": "google" if password is None else "password",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    if password is not None:
-        doc["password_hash"] = hash_password(password)
-    await db.users.insert_one(doc)
-    return doc
+    async with AsyncSessionLocal() as session:
+        user = User(
+            id=str(uuid.uuid4()),
+            email=email.lower(),
+            name=name or email.split("@")[0],
+            role=role,
+            password_hash=hash_password(password) if password else "",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        return {
+            "id": user.id, "email": user.email, "name": user.name,
+            "role": user.role, "created_at": user.created_at.isoformat(),
+        }
 
 
 @router.post("/register")
 async def register(body: RegisterBody, response: Response):
     email = body.email.lower()
-    if await db.users.find_one({"email": email}):
-        raise HTTPException(status_code=400, detail="Email already registered")
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(User).filter(User.email == email))
+        existing = result.scalars().first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already registered")
+    
     if len(body.password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    
     user = await _create_user(email, body.name, body.password)
     token = create_access_token(user["id"], email)
     set_auth_cookie(response, token)
@@ -133,33 +151,36 @@ async def register(body: RegisterBody, response: Response):
 @router.post("/login")
 async def login(body: LoginBody, response: Response):
     email = body.email.lower()
-    user = await db.users.find_one({"email": email}, {"_id": 0})
-    now = datetime.now(timezone.utc)
-
-    if user and user.get("locked_until"):
-        try:
-            lu = datetime.fromisoformat(user["locked_until"])
-        except Exception:
-            lu = None
-        if lu and lu > now:
-            raise HTTPException(status_code=423,
-                                detail="Account temporarily locked after too many failed attempts. Try again later.")
-
-    if not user or not user.get("password_hash") or not verify_password(body.password, user["password_hash"]):
-        if user:
-            attempts = user.get("failed_attempts", 0) + 1
-            updates = {"failed_attempts": attempts}
-            if attempts >= 5:
-                updates["locked_until"] = (now + timedelta(minutes=15)).isoformat()
-                updates["failed_attempts"] = 0
-            await db.users.update_one({"email": email}, {"$set": updates})
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    await db.users.update_one({"email": email}, {"$set": {"failed_attempts": 0, "locked_until": None}})
-    token = create_access_token(user["id"], email)
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(User).filter(User.email == email))
+        user = result.scalars().first()
+        
+        now = datetime.utcnow()
+        
+        if user and user.locked_until:
+            if user.locked_until > now:
+                raise HTTPException(status_code=423,
+                                    detail="Account temporarily locked after too many failed attempts. Try again later.")
+        
+        if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
+            if user:
+                attempts = (user.failed_attempts or 0) + 1
+                if attempts >= 5:
+                    user.locked_until = now + timedelta(minutes=15)
+                    user.failed_attempts = 0
+                else:
+                    user.failed_attempts = attempts
+                await session.commit()
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        
+        user.failed_attempts = 0
+        user.locked_until = None
+        await session.commit()
+    
+    token = create_access_token(user.id, email)
     set_auth_cookie(response, token)
-    await audit(user["id"], "login", {"email": email})
-    return {"user": public_user(user), "token": token}
+    await audit(user.id, "login", {"email": email})
+    return {"user": public_user({"id": user.id, "email": user.email, "name": user.name, "role": user.role, "created_at": user.created_at.isoformat()}), "token": token}
 
 
 class GoogleBody(BaseModel):
@@ -177,10 +198,15 @@ async def google_login(body: GoogleBody, response: Response):
         raise HTTPException(status_code=401, detail="Google auth failed")
     data = r.json()
     email = data["email"].lower()
-    user = await db.users.find_one({"email": email}, {"_id": 0})
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(User).filter(User.email == email))
+        user = result.scalars().first()
     if not user:
         user = await _create_user(email, data.get("name", ""), password=None,
                                   picture=data.get("picture", ""))
+    else:
+        user = {"id": user.id, "email": user.email, "name": user.name or "",
+                "role": user.role, "created_at": user.created_at.isoformat()}
     token = create_access_token(user["id"], email)
     set_auth_cookie(response, token)
     await audit(user["id"], "google_login", {"email": email})
@@ -201,16 +227,16 @@ async def logout(response: Response):
 async def seed_admin():
     admin_email = os.environ["ADMIN_EMAIL"].lower()
     admin_password = os.environ["ADMIN_PASSWORD"]
-    existing = await db.users.find_one({"email": admin_email})
-    if existing is None:
-        await _create_user(admin_email, "Grizon Admin", admin_password, role="admin")
-    else:
-        updates = {}
-        if not verify_password(admin_password, existing.get("password_hash", "")):
-            updates["password_hash"] = hash_password(admin_password)
-        if existing.get("role") != "admin":
-            updates["role"] = "admin"
-        if not existing.get("mcp_client_id"):
-            updates["mcp_client_id"] = _client_id()
-        if updates:
-            await db.users.update_one({"email": admin_email}, {"$set": updates})
+    
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(User).filter(User.email == admin_email))
+        existing = result.scalars().first()
+        
+        if existing is None:
+            await _create_user(admin_email, "Grizon Admin", admin_password, role="admin")
+        else:
+            if not verify_password(admin_password, existing.password_hash or ""):
+                existing.password_hash = hash_password(admin_password)
+            if existing.role != "admin":
+                existing.role = "admin"
+            await session.commit()

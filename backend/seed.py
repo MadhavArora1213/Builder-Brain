@@ -1,33 +1,51 @@
 import uuid
 from datetime import datetime, timezone
-from db import db
+from sqlalchemy import select
+from db import AsyncSessionLocal
+from models import Skill, SystemConfig
 
 DEFAULT_SKILLS = [
-    {"name": "react.skill.md", "category": "coding", "agents": ["coding"],
+    {"name": "react.skill.md", "category": "coding",
      "content": "# React\n- Use function components and hooks.\n- Keep components small.\n- Use Vite for dev.\n"},
-    {"name": "nextjs.skill.md", "category": "coding", "agents": ["coding"],
+    {"name": "nextjs.skill.md", "category": "coding",
      "content": "# Next.js\n- App router in src/app.\n- Use API routes for backend.\n- TypeScript by default.\n"},
-    {"name": "typescript.skill.md", "category": "coding", "agents": ["coding"],
+    {"name": "typescript.skill.md", "category": "coding",
      "content": "# TypeScript\n- Enable strict mode.\n- Type all props and API responses.\n"},
-    {"name": "debugging.skill.md", "category": "coding", "agents": ["coding", "testing"],
+    {"name": "debugging.skill.md", "category": "coding",
      "content": "# Debugging\n- Read sandbox logs first.\n- Fix root cause, minimal changes.\n- Re-run after each fix.\n"},
 ]
 
 
 async def seed_skills():
-    for s in DEFAULT_SKILLS:
-        exists = await db.skills.find_one({"name": s["name"]})
-        if not exists:
-            await db.skills.insert_one({
-                "id": str(uuid.uuid4()), "enabled": True,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat(), **s})
+    async with AsyncSessionLocal() as session:
+        for s in DEFAULT_SKILLS:
+            result = await session.execute(select(Skill).filter(Skill.name == s["name"]))
+            exists = result.scalars().first()
+            if not exists:
+                skill = Skill(
+                    id=str(uuid.uuid4()),
+                    name=s["name"],
+                    description=s.get("content", ""),
+                    category=s.get("category", ""),
+                    config={},
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+                session.add(skill)
+        await session.commit()
 
 
 async def seed_config():
-    exists = await db.system_config.find_one({"key": "app"})
-    if not exists:
-        await db.system_config.insert_one({
-            "id": str(uuid.uuid4()), "key": "app", "app_name": "Grizon AI",
-            "default_stack": "vite-react-express-ts", "max_retries": 2,
-            "created_at": datetime.now(timezone.utc).isoformat()})
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(SystemConfig).filter(SystemConfig.id == "config"))
+        exists = result.scalars().first()
+        if not exists:
+            config = SystemConfig(
+                id="config",
+                integrations={},
+                agent_models={},
+                settings={},
+                updated_at=datetime.utcnow(),
+            )
+            session.add(config)
+            await session.commit()

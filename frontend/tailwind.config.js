@@ -13,13 +13,13 @@ module.exports = {
         sm: 'calc(var(--radius) - 4px)'
       },
       colors: {
-        parchment: '#f6f3f1',
-        sand: '#ece8e4',
-        ink: '#1c1917',
-        forest: { DEFAULT: '#2a433d', dark: '#1e332d' },
-        gold: '#9c8152',
-        danger: '#b34d3e',
-        moss: '#4b6c56',
+        parchment: 'var(--parchment)',
+        sand: 'var(--sand)',
+        ink: 'var(--ink)',
+        forest: { DEFAULT: 'var(--forest)', dark: 'color-mix(in srgb, var(--forest) 85%, black)' },
+        gold: 'var(--gold)',
+        danger: 'var(--danger)',
+        moss: 'var(--moss)',
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
         card: {

@@ -1,39 +1,69 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Database, BookText, Users, FolderGit2, MessageSquare, Cpu, Plus, Trash2, Edit3, X, Bot, KeyRound, Save } from "lucide-react";
+import { Database, BookText, Users, FolderGit2, MessageSquare, Cpu, Plus, Trash2, Edit3, X, Bot, KeyRound, Save, LayoutDashboard, Settings, ChevronRight } from "lucide-react";
 import api from "@/lib/api";
 import Nav from "@/components/Nav";
 
-const TABS = [
-  { key: "overview", label: "Overview" },
-  { key: "database", label: "Database" },
-  { key: "skills", label: "Skills" },
-  { key: "agents", label: "Agents" },
-  { key: "integrations", label: "Integrations" },
+const SIDEBAR_ITEMS = [
+  { key: "overview", label: "Overview", icon: LayoutDashboard },
+  { key: "database", label: "Database", icon: Database },
+  { key: "skills", label: "Skills", icon: BookText },
+  { key: "agents", label: "Agents", icon: Bot },
+  { key: "integrations", label: "Integrations", icon: Settings },
 ];
 
 export default function Admin() {
   const [tab, setTab] = useState("overview");
+
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: "var(--parchment)", color: "var(--ink)" }}>
       <Nav />
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        <h1 className="font-heading text-4xl text-ink mb-1">Admin Dashboard</h1>
-        <p className="font-mono text-xs text-ink/50 mb-6">System-wide data & agent skills</p>
-        <div className="flex gap-1 border-b border-[#cecac8] mb-6">
-          {TABS.map((t) => (
-            <button key={t.key} data-testid={`admin-tab-${t.key}`} onClick={() => setTab(t.key)}
-              className={`font-mono text-sm px-4 py-2 -mb-px border-b-2 transition-colors ${tab === t.key ? "border-forest text-forest" : "border-transparent text-ink/50 hover:text-ink"}`}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-        {tab === "overview" && <Overview />}
-        {tab === "database" && <DatabaseView />}
-        {tab === "skills" && <Skills />}
-        {tab === "agents" && <Agents />}
-        {tab === "integrations" && <Integrations />}
-      </main>
+      <div className="flex flex-1 min-h-0">
+        {/* Sidebar */}
+        <aside className="w-64 shrink-0 border-r flex flex-col"
+          style={{ borderColor: "var(--border)", backgroundColor: "var(--card)" }}>
+          <div className="px-5 py-5 border-b" style={{ borderColor: "var(--border)" }}>
+            <h2 className="font-heading text-xl" style={{ color: "var(--ink)" }}>Admin Panel</h2>
+            <p className="font-mono text-[11px] mt-1" style={{ color: "var(--muted-foreground)" }}>System management</p>
+          </div>
+          <nav className="flex-1 p-3 space-y-1">
+            {SIDEBAR_ITEMS.map((item) => {
+              const Icon = item.icon;
+              const active = tab === item.key;
+              return (
+                <button key={item.key} data-testid={`admin-tab-${item.key}`} onClick={() => setTab(item.key)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-sm font-mono text-sm transition-all group"
+                  style={active
+                    ? { backgroundColor: "var(--forest)", color: "white" }
+                    : { color: "var(--muted-foreground)" }}>
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className="flex-1 text-left">{item.label}</span>
+                  <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-60 transition-opacity" />
+                </button>
+              );
+            })}
+          </nav>
+          <div className="p-4 border-t" style={{ borderColor: "var(--border)" }}>
+            <p className="font-mono text-[10px]" style={{ color: "var(--muted-foreground)" }}>Grizon AI v1.0</p>
+          </div>
+        </aside>
+
+        {/* Content */}
+        <main className="flex-1 overflow-y-auto p-8">
+          <div className="max-w-5xl">
+            <div className="mb-6">
+              <h1 className="font-heading text-3xl" style={{ color: "var(--ink)" }}>
+                {SIDEBAR_ITEMS.find((i) => i.key === tab)?.label}
+              </h1>
+            </div>
+            {tab === "overview" && <Overview />}
+            {tab === "database" && <DatabaseView />}
+            {tab === "skills" && <Skills />}
+            {tab === "agents" && <Agents />}
+            {tab === "integrations" && <Integrations />}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
@@ -50,10 +80,11 @@ function Overview() {
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" data-testid="admin-overview">
       {cards.map((c) => (
-        <div key={c.label} className="bg-white border border-[#cecac8] rounded-sm p-5">
-          <c.icon className="w-5 h-5 text-gold mb-3" />
-          <div className="font-heading text-4xl text-ink">{c.value ?? "—"}</div>
-          <div className="font-mono text-xs text-ink/50 mt-1">{c.label}</div>
+        <div key={c.label} className="border rounded-sm p-5"
+          style={{ backgroundColor: "var(--card)", borderColor: "var(--border)" }}>
+          <c.icon className="w-5 h-5 mb-3" style={{ color: "var(--gold)" }} />
+          <div className="font-heading text-4xl" style={{ color: "var(--ink)" }}>{c.value ?? "—"}</div>
+          <div className="font-mono text-xs mt-1" style={{ color: "var(--muted-foreground)" }}>{c.label}</div>
         </div>
       ))}
     </div>
@@ -72,29 +103,35 @@ function DatabaseView() {
   };
   const cols = rows.length ? Object.keys(rows[0]).slice(0, 6) : [];
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6" data-testid="admin-database">
-      <div className="lg:col-span-1 space-y-1">
+    <div className="flex gap-6" data-testid="admin-database">
+      <div className="w-56 shrink-0 space-y-1">
         {tables.map((t) => (
           <button key={t.name} data-testid={`table-${t.name}`} onClick={() => open(t.name)}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-sm font-mono text-xs transition-colors ${selected === t.name ? "bg-forest text-white" : "bg-white border border-[#cecac8] hover:bg-sand text-ink/80"}`}>
+            className="w-full flex items-center justify-between px-3 py-2 rounded-sm font-mono text-xs transition-colors"
+            style={selected === t.name
+              ? { backgroundColor: "var(--forest)", color: "white" }
+              : { backgroundColor: "var(--parchment)", color: "var(--foreground)" }}>
             <span className="flex items-center gap-2"><Database className="w-3.5 h-3.5" /> {t.name}</span>
             <span className="opacity-60">{t.count}</span>
           </button>
         ))}
       </div>
-      <div className="lg:col-span-3 bg-white border border-[#cecac8] rounded-sm overflow-hidden">
+      <div className="flex-1 border rounded-sm overflow-hidden"
+        style={{ backgroundColor: "var(--card)", borderColor: "var(--border)" }}>
         {!selected ? (
-          <div className="p-12 text-center font-mono text-sm text-ink/40">Select a table to browse its rows.</div>
+          <div className="p-12 text-center font-mono text-sm" style={{ color: "var(--muted-foreground)" }}>Select a table to browse its rows.</div>
         ) : rows.length === 0 ? (
-          <div className="p-12 text-center font-mono text-sm text-ink/40">No rows in {selected}.</div>
+          <div className="p-12 text-center font-mono text-sm" style={{ color: "var(--muted-foreground)" }}>No rows in {selected}.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs font-mono">
-              <thead className="bg-sand"><tr>{cols.map((c) => <th key={c} className="text-left px-3 py-2 text-ink/60">{c}</th>)}</tr></thead>
+              <thead style={{ backgroundColor: "var(--sand)" }}>
+                <tr>{cols.map((c) => <th key={c} className="text-left px-3 py-2" style={{ color: "var(--muted-foreground)" }}>{c}</th>)}</tr>
+              </thead>
               <tbody>
                 {rows.map((r, i) => (
-                  <tr key={i} className="border-t border-[#ece8e4]">
-                    {cols.map((c) => <td key={c} className="px-3 py-2 text-ink/80 max-w-[220px] truncate">{typeof r[c] === "object" ? JSON.stringify(r[c]) : String(r[c] ?? "")}</td>)}
+                  <tr key={i} className="border-t" style={{ borderColor: "var(--sand)" }}>
+                    {cols.map((c) => <td key={c} className="px-3 py-2 max-w-[220px] truncate" style={{ color: "var(--foreground)" }}>{typeof r[c] === "object" ? JSON.stringify(r[c]) : String(r[c] ?? "")}</td>)}
                   </tr>
                 ))}
               </tbody>
@@ -117,34 +154,86 @@ const AGENT_LIST = [
 function Agents() {
   const [models, setModels] = useState({});
   const [saving, setSaving] = useState(false);
-  useEffect(() => { api.get("/admin/agent-models").then((r) => setModels(r.data.models)).catch(() => {}); }, []);
+  const [availableModels, setAvailableModels] = useState({});
+  const [loadingModels, setLoadingModels] = useState({});
+
+  useEffect(() => {
+    api.get("/admin/agent-models").then((r) => {
+      const m = r.data.models;
+      setModels(m);
+      Object.keys(m).forEach((key) => {
+        const provider = m[key]?.provider;
+        if (provider) fetchModels(provider, key, false);
+      });
+    }).catch(() => {});
+  }, []);
+
+  const fetchModels = async (provider, agentKey, autoSelect) => {
+    setLoadingModels((prev) => ({ ...prev, [agentKey]: true }));
+    try {
+      const { data } = await api.get(`/admin/models/${provider}`);
+      const modelsList = data.models || [];
+      setAvailableModels((prev) => ({ ...prev, [agentKey]: modelsList }));
+      if (autoSelect && modelsList.length > 0) {
+        setModels((prev) => ({
+          ...prev,
+          [agentKey]: { model: modelsList[0].id, provider },
+        }));
+      }
+    } catch {
+      setAvailableModels((prev) => ({ ...prev, [agentKey]: [] }));
+    } finally {
+      setLoadingModels((prev) => ({ ...prev, [agentKey]: false }));
+    }
+  };
+
+  const onProviderChange = (agentKey, newProvider) => {
+    fetchModels(newProvider, agentKey, true);
+  };
+
   const save = async () => {
     setSaving(true);
     try { const { data } = await api.put("/admin/agent-models", { models }); setModels(data.models); toast.success("Agent models updated"); }
     catch { toast.error("Failed to save"); } finally { setSaving(false); }
   };
   return (
-    <div data-testid="admin-agents" className="max-w-4xl">
-      <p className="font-mono text-xs text-ink/50 mb-4">Configure the model and provider each agent uses. Models are read dynamically at run time — new executions use the latest value. Not hard-coded in the agents.</p>
-      <div className="bg-white border border-[#cecac8] rounded-sm divide-y divide-[#ece8e4]">
-        {AGENT_LIST.map((a) => (
-          <div key={a.key} className="flex items-center justify-between px-4 py-3 gap-4">
-            <span className="flex items-center gap-2 font-mono text-sm text-ink w-32"><Bot className="w-4 h-4 text-gold" /> {a.label}</span>
-            <select data-testid={`provider-${a.key}`} value={models[a.key]?.provider || "sarvam"} 
-              onChange={(e) => setModels({ ...models, [a.key]: { ...models[a.key], model: models[a.key]?.model || "", provider: e.target.value } })}
-              className="bg-white border border-[#cecac8] rounded-sm px-3 py-1.5 text-sm font-mono w-32 focus:outline-none focus:ring-2 focus:ring-forest">
-              <option value="sarvam">Sarvam</option>
-              <option value="openrouter">OpenRouter</option>
-            </select>
-            <input data-testid={`model-${a.key}`} value={models[a.key]?.model || ""} 
-              onChange={(e) => setModels({ ...models, [a.key]: { ...models[a.key], model: e.target.value, provider: models[a.key]?.provider || "sarvam" } })}
-              className="bg-white border border-[#cecac8] rounded-sm px-3 py-1.5 text-sm font-mono flex-1 focus:outline-none focus:ring-2 focus:ring-forest" 
-              placeholder="Model name" />
-          </div>
-        ))}
+    <div data-testid="admin-agents">
+      <p className="font-mono text-xs mb-5" style={{ color: "var(--muted-foreground)" }}>Configure the model and provider each agent uses. Models are fetched directly from the provider API — select a provider, then pick a model from the dropdown.</p>
+      <div className="border rounded-sm divide-y" style={{ backgroundColor: "var(--card)", borderColor: "var(--border)", divideColor: "var(--sand)" }}>
+        {AGENT_LIST.map((a) => {
+          const currentProvider = models[a.key]?.provider || "sarvam";
+          const currentModel = models[a.key]?.model || "";
+          const options = availableModels[a.key] || [];
+          const isLoading = loadingModels[a.key];
+          return (
+            <div key={a.key} className="flex items-center px-5 py-4 gap-4">
+              <span className="flex items-center gap-3 font-mono text-sm w-40 shrink-0" style={{ color: "var(--foreground)" }}>
+                <Bot className="w-4 h-4" style={{ color: "var(--gold)" }} /> {a.label}
+              </span>
+              <select data-testid={`provider-${a.key}`} value={currentProvider}
+                onChange={(e) => onProviderChange(a.key, e.target.value)}
+                className="border rounded-sm px-3 py-2 text-sm font-mono w-40 shrink-0 focus:outline-none focus:ring-2"
+                style={{ backgroundColor: "var(--parchment)", borderColor: "var(--border)", color: "var(--foreground)" }}>
+                <option value="sarvam">Sarvam</option>
+                <option value="openrouter">OpenRouter</option>
+              </select>
+              <select data-testid={`model-${a.key}`} value={currentModel}
+                onChange={(e) => setModels({ ...models, [a.key]: { ...models[a.key], model: e.target.value, provider: currentProvider } })}
+                disabled={isLoading}
+                className="border rounded-sm px-3 py-2 text-sm font-mono flex-1 focus:outline-none focus:ring-2"
+                style={{ backgroundColor: "var(--parchment)", borderColor: "var(--border)", color: "var(--foreground)" }}>
+                <option value="">{isLoading ? "Loading models…" : "Select a model"}</option>
+                {options.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name || m.id}{m.context_length ? ` (${(m.context_length / 1000).toFixed(0)}k)` : ""}</option>
+                ))}
+              </select>
+            </div>
+          );
+        })}
       </div>
       <button data-testid="save-agent-models-btn" onClick={save} disabled={saving}
-        className="mt-4 flex items-center gap-1.5 bg-forest text-white rounded-sm px-4 py-2 text-sm hover:bg-forest-dark disabled:opacity-50">
+        className="mt-5 flex items-center gap-1.5 text-white rounded-sm px-5 py-2.5 text-sm disabled:opacity-50"
+        style={{ backgroundColor: "var(--forest)" }}>
         <Save className="w-4 h-4" /> {saving ? "Saving…" : "Save models"}
       </button>
     </div>
@@ -172,20 +261,24 @@ function Integrations() {
     catch { toast.error("Failed to save"); } finally { setSaving(false); }
   };
   return (
-    <div data-testid="admin-integrations" className="max-w-2xl">
-      <p className="font-mono text-xs text-ink/50 mb-4">LLM providers (Sarvam and OpenRouter) and NemoClaw sandbox credentials. Changes apply immediately to new agent runs and sandbox calls. Handle with care — these are secrets.</p>
-      <div className="space-y-3">
+    <div data-testid="admin-integrations">
+      <p className="font-mono text-xs mb-5" style={{ color: "var(--muted-foreground)" }}>LLM providers (Sarvam and OpenRouter) and NemoClaw sandbox credentials. Changes apply immediately to new agent runs and sandbox calls. Handle with care — these are secrets.</p>
+      <div className="space-y-4 max-w-2xl">
         {INTEG_FIELDS.map((f) => (
           <div key={f.key}>
-            <label className="font-mono text-xs text-ink/60 flex items-center gap-1.5 mb-1">{f.secret && <KeyRound className="w-3.5 h-3.5 text-gold" />}{f.label}</label>
+            <label className="font-mono text-xs flex items-center gap-1.5 mb-1.5" style={{ color: "var(--muted-foreground)" }}>
+              {f.secret && <KeyRound className="w-3.5 h-3.5" style={{ color: "var(--gold)" }} />}{f.label}
+            </label>
             <input data-testid={`integ-${f.key}`} type={f.secret ? "password" : "text"} value={cfg[f.key] || ""}
               onChange={(e) => setCfg({ ...cfg, [f.key]: e.target.value })}
-              className="w-full bg-white border border-[#cecac8] rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-forest" />
+              className="w-full border rounded-sm px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2"
+              style={{ backgroundColor: "var(--parchment)", borderColor: "var(--border)", color: "var(--foreground)" }} />
           </div>
         ))}
       </div>
       <button data-testid="save-integrations-btn" onClick={save} disabled={saving}
-        className="mt-4 flex items-center gap-1.5 bg-forest text-white rounded-sm px-4 py-2 text-sm hover:bg-forest-dark disabled:opacity-50">
+        className="mt-5 flex items-center gap-1.5 text-white rounded-sm px-5 py-2.5 text-sm disabled:opacity-50"
+        style={{ backgroundColor: "var(--forest)" }}>
         <Save className="w-4 h-4" /> {saving ? "Saving…" : "Save settings"}
       </button>
     </div>
@@ -215,56 +308,74 @@ function Skills() {
 
   return (
     <div data-testid="admin-skills">
-      <div className="flex justify-between items-center mb-4">
-        <p className="font-mono text-xs text-ink/50">Agent skill.md files — enabled skills are injected into the Coding Agent.</p>
+      <div className="flex justify-between items-center mb-5">
+        <p className="font-mono text-xs" style={{ color: "var(--muted-foreground)" }}>Agent skill.md files — enabled skills are injected into the Coding Agent.</p>
         <button data-testid="new-skill-btn" onClick={() => setEditing({ ...EMPTY })}
-          className="flex items-center gap-1.5 bg-forest text-white rounded-sm px-3 py-1.5 text-sm hover:-translate-y-px transition-transform">
+          className="flex items-center gap-1.5 text-white rounded-sm px-4 py-2 text-sm hover:-translate-y-px transition-transform"
+          style={{ backgroundColor: "var(--forest)" }}>
           <Plus className="w-4 h-4" /> New Skill
         </button>
       </div>
       <div className="grid md:grid-cols-2 gap-4">
         {skills.map((s) => (
-          <div key={s.id} data-testid={`skill-${s.id}`} className="bg-white border border-[#cecac8] rounded-sm p-4">
+          <div key={s.id} data-testid={`skill-${s.id}`} className="border rounded-sm p-4"
+            style={{ backgroundColor: "var(--card)", borderColor: "var(--border)" }}>
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-2">
-                <BookText className="w-4 h-4 text-gold" />
-                <span className="font-mono text-sm text-ink">{s.name}</span>
+                <BookText className="w-4 h-4" style={{ color: "var(--gold)" }} />
+                <span className="font-mono text-sm" style={{ color: "var(--ink)" }}>{s.name}</span>
               </div>
               <div className="flex items-center gap-2">
                 <button data-testid={`toggle-skill-${s.id}`} onClick={() => toggle(s)}
-                  className={`font-mono text-[10px] px-2 py-0.5 rounded-sm ${s.enabled ? "bg-moss/15 text-moss" : "bg-sand text-ink/40"}`}>
+                  className="font-mono text-[10px] px-2 py-0.5 rounded-sm"
+                  style={s.enabled
+                    ? { backgroundColor: "color-mix(in srgb, var(--moss) 15%, transparent)", color: "var(--moss)" }
+                    : { backgroundColor: "var(--sand)", color: "var(--muted-foreground)" }}>
                   {s.enabled ? "enabled" : "disabled"}
                 </button>
-                <button onClick={() => setEditing(s)} className="text-ink/40 hover:text-forest"><Edit3 className="w-4 h-4" /></button>
-                <button data-testid={`delete-skill-${s.id}`} onClick={() => del(s.id)} className="text-ink/40 hover:text-danger"><Trash2 className="w-4 h-4" /></button>
+                <button onClick={() => setEditing(s)} className="hover:opacity-70" style={{ color: "var(--muted-foreground)" }}>
+                  <Edit3 className="w-4 h-4" />
+                </button>
+                <button data-testid={`delete-skill-${s.id}`} onClick={() => del(s.id)} className="hover:opacity-70" style={{ color: "var(--danger)" }}>
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             </div>
             <div className="flex gap-1 mt-2 flex-wrap">
-              {(s.agents || []).map((a) => <span key={a} className="font-mono text-[10px] bg-sand px-2 py-0.5 rounded-sm text-ink/60">{a}</span>)}
+              {(s.agents || []).map((a) => (
+                <span key={a} className="font-mono text-[10px] px-2 py-0.5 rounded-sm"
+                  style={{ backgroundColor: "var(--sand)", color: "var(--muted-foreground)" }}>{a}</span>
+              ))}
             </div>
-            <p className="font-mono text-[11px] text-ink/50 mt-2 line-clamp-2 whitespace-pre-wrap">{s.content}</p>
+            <p className="font-mono text-[11px] mt-2 line-clamp-2 whitespace-pre-wrap" style={{ color: "var(--muted-foreground)" }}>{s.content}</p>
           </div>
         ))}
       </div>
 
       {editing && (
-        <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4" onClick={() => setEditing(null)}>
-          <div className="bg-white border border-[#cecac8] rounded-sm w-full max-w-lg p-5" onClick={(e) => e.stopPropagation()} data-testid="skill-editor">
+        <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: "color-mix(in srgb, var(--ink) 40%, transparent)" }}
+          onClick={() => setEditing(null)}>
+          <div className="border rounded-sm w-full max-w-lg p-5" onClick={(e) => e.stopPropagation()}
+            data-testid="skill-editor" style={{ backgroundColor: "var(--card)", borderColor: "var(--border)" }}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-heading text-2xl text-ink">{editing.id ? "Edit Skill" : "New Skill"}</h3>
-              <button onClick={() => setEditing(null)}><X className="w-5 h-5 text-ink/50" /></button>
+              <h3 className="font-heading text-2xl" style={{ color: "var(--ink)" }}>{editing.id ? "Edit Skill" : "New Skill"}</h3>
+              <button onClick={() => setEditing(null)}><X className="w-5 h-5" style={{ color: "var(--muted-foreground)" }} /></button>
             </div>
             <div className="space-y-3">
               <input data-testid="skill-name-input" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="react.skill.md"
-                className="w-full bg-white border border-[#cecac8] rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-forest" />
+                className="w-full border rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2"
+                style={{ backgroundColor: "var(--parchment)", borderColor: "var(--border)", color: "var(--foreground)" }} />
               <input value={editing.agents.join(",")} onChange={(e) => setEditing({ ...editing, agents: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} placeholder="agents: coding,testing"
-                className="w-full bg-white border border-[#cecac8] rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-forest" />
+                className="w-full border rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2"
+                style={{ backgroundColor: "var(--parchment)", borderColor: "var(--border)", color: "var(--foreground)" }} />
               <textarea data-testid="skill-content-input" value={editing.content} onChange={(e) => setEditing({ ...editing, content: e.target.value })} rows={8} placeholder="# Skill markdown…"
-                className="w-full bg-white border border-[#cecac8] rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-forest" />
-              <label className="flex items-center gap-2 font-mono text-xs text-ink/70">
+                className="w-full border rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2"
+                style={{ backgroundColor: "var(--parchment)", borderColor: "var(--border)", color: "var(--foreground)" }} />
+              <label className="flex items-center gap-2 font-mono text-xs" style={{ color: "var(--foreground)" }}>
                 <input type="checkbox" checked={editing.enabled} onChange={(e) => setEditing({ ...editing, enabled: e.target.checked })} /> enabled
               </label>
-              <button data-testid="save-skill-btn" onClick={save} className="w-full bg-forest text-white rounded-sm py-2.5 text-sm font-medium hover:bg-forest-dark">Save Skill</button>
+              <button data-testid="save-skill-btn" onClick={save} className="w-full text-white rounded-sm py-2.5 text-sm font-medium"
+                style={{ backgroundColor: "var(--forest)" }}>Save Skill</button>
             </div>
           </div>
         </div>

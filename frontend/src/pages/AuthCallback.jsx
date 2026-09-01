@@ -27,5 +27,5 @@ export default function AuthCallback() {
     })();
   }, [location, navigate, setUser]);
 
-  return <div className="min-h-screen flex items-center justify-center font-mono text-ink/60">Signing you in…</div>;
+  return <div className="min-h-screen flex items-center justify-center font-mono" style={{ color: "var(--muted-foreground)" }}>Signing you in…</div>;
 }

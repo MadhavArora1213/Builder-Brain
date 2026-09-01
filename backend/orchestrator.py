@@ -9,59 +9,107 @@ import uuid
 from datetime import datetime, timezone
 from typing import TypedDict, List
 
+from sqlalchemy import select, update, delete, func
 from langgraph.graph import StateGraph, END
 
 import llm
 import mcp_client as mcp
 import config
-from db import db, log_event
+from db import AsyncSessionLocal, log_event
+from models import Project, Message, ProjectFile, Skill, User, WorkflowRun, SandboxSession, AgentExecution
 
 MAX_RETRIES = 2
 _running_tasks: dict = {}
 
 
 def now_iso():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.utcnow().isoformat()
+
+
+def _row_to_dict(row):
+    if row is None:
+        return None
+    d = {}
+    for col in row.__table__.columns:
+        val = getattr(row, col.name)
+        if isinstance(val, datetime):
+            val = val.isoformat()
+        elif isinstance(val, dict):
+            val = dict(val) if val else {}
+        elif isinstance(val, list):
+            val = list(val) if val else []
+        d[col.name] = val
+    return d
 
 
 async def add_message(project, role, mtype="text", content="", agent=None, data=None):
-    msg = {
-        "id": str(uuid.uuid4()),
-        "project_id": project["id"],
-        "conversation_id": project.get("conversation_id"),
-        "user_id": project["owner_id"],
-        "role": role,          # user | assistant | agent | system
-        "agent": agent,        # manager | question | planner | coding | testing
-        "type": mtype,         # text | questions | plan | prd | log | status
-        "content": content,
-        "data": data or {},
-        "created_at": now_iso(),
+    msg_id = str(uuid.uuid4())
+    async with AsyncSessionLocal() as session:
+        message = Message(
+            id=msg_id,
+            project_id=project["id"],
+            conversation_id=project.get("conversation_id"),
+            user_id=project["owner_id"],
+            role=role,
+            agent=agent,
+            type=mtype,
+            content=content,
+            data=data or {},
+            created_at=datetime.utcnow(),
+        )
+        session.add(message)
+        await session.commit()
+    return {
+        "id": msg_id, "project_id": project["id"], "role": role,
+        "agent": agent, "type": mtype, "content": content,
+        "data": data or {}, "created_at": now_iso(),
     }
-    await db.messages.insert_one({k: v for k, v in msg.items()})
-    msg.pop("_id", None)
-    return msg
 
 
 async def set_workflow(project_id, **fields):
-    fields = {f"workflow.{k}": v for k, v in fields.items()}
-    fields["updated_at"] = now_iso()
-    await db.projects.update_one({"id": project_id}, {"$set": fields})
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Project).filter(Project.id == project_id))
+        project = result.scalars().first()
+        if project:
+            wf = dict(project.workflow) if project.workflow else {}
+            for k, v in fields.items():
+                wf[k] = v
+            project.workflow = wf
+            project.updated_at = datetime.utcnow()
+            await session.commit()
 
 
 async def get_project(project_id):
-    return await db.projects.find_one({"id": project_id}, {"_id": 0})
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Project).filter(Project.id == project_id))
+        project = result.scalars().first()
+        if not project:
+            return None
+        d = _row_to_dict(project)
+        wf = d.get("workflow") or {}
+        secrets = d.get("secrets") or {}
+        d["workflow"] = wf
+        d["secrets"] = secrets
+        return d
 
 
 # --------------------------------------------------------------------------
 # Skills
 # --------------------------------------------------------------------------
 async def get_skills_for(agent_name: str) -> str:
-    skills = await db.skills.find(
-        {"enabled": True, "agents": agent_name}, {"_id": 0}
-    ).to_list(50)
-    if not skills:
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Skill).filter(Skill.enabled == True)
+        )
+        skills = result.scalars().all()
+    matching = []
+    for s in skills:
+        agents = s.agents or []
+        if agent_name in agents:
+            matching.append(s)
+    if not matching:
         return ""
-    parts = [f"### SKILL: {s['name']}\n{s.get('content','')}" for s in skills]
+    parts = [f"### SKILL: {s.name}\n{s.content or ''}" for s in matching]
     return "\n\n".join(parts)
 
 
@@ -234,8 +282,14 @@ async def submit_answers(project, answers):
         else:
             lines.append(f"- {a.get('question')}: {val}")
     if secrets:
-        await db.projects.update_one({"id": project["id"]},
-                                     {"$set": {f"secrets.{k}": v for k, v in secrets.items()}})
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(Project).filter(Project.id == project["id"]))
+            proj = result.scalars().first()
+            if proj:
+                existing_secrets = dict(proj.secrets) if proj.secrets else {}
+                existing_secrets.update(secrets)
+                proj.secrets = existing_secrets
+                await session.commit()
     answer_text = "Answers:\n" + "\n".join(lines) if lines else "Answers provided."
     await add_message(project, "user", "text", answer_text)
     combined = (wf.get("requirements", "") + "\n\n" + answer_text).strip()
@@ -249,8 +303,12 @@ async def _do_plan(project, requirements, has_build, is_modify=False):
     await add_message(project, "agent", "status", "Planning the implementation...", agent="planner")
     files_summary = ""
     if has_build:
-        files = await db.project_files.find({"project_id": project["id"]}, {"_id": 0, "content": 0}).to_list(200)
-        files_summary = "\n".join(f["path"] for f in files)
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(ProjectFile).filter(ProjectFile.project_id == project["id"])
+            )
+            files = result.scalars().all()
+        files_summary = "\n".join(f.path for f in files)
     plan = await planner_run(requirements, files_summary)
     todo = [{"id": t["id"], "title": t["title"], "description": t.get("description", ""), "done": False}
             for t in plan.get("tasks", [])]
@@ -398,18 +456,26 @@ async def coding_node(state: BState) -> BState:
                    "NEVER hardcode them in frontend/client code):\n" + pairs + "\n")
 
     if is_modify and not retry:
-        existing = await db.project_files.find({"project_id": state["project_id"]}, {"_id": 0}).to_list(200)
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(ProjectFile).filter(ProjectFile.project_id == state["project_id"])
+            )
+            existing = result.scalars().all()
         prompt += ("\nThis is a MODIFICATION of an EXISTING app. Apply ONLY the requested change and keep "
                    "everything else byte-for-byte identical. Do not restructure or rebuild unrelated parts.\n")
         prompt += f"Requested change / current requirements:\n{wf.get('requirements','')}\n\nExisting files:\n"
         for f in existing:
-            prompt += f"\n===GRIZON_FILE: {f['path']}===\n{f.get('content','')[:3500]}\n===GRIZON_END===\n"
+            prompt += f"\n===GRIZON_FILE: {f.path}===\n{(f.content or '')[:3500]}\n===GRIZON_END===\n"
         prompt += "\nReturn ONLY the files you changed (same output format). Reuse the same FRAMEWORK and ENTRYPOINT."
     elif retry and state.get("test"):
-        existing = await db.project_files.find({"project_id": state["project_id"]}, {"_id": 0}).to_list(200)
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(ProjectFile).filter(ProjectFile.project_id == state["project_id"])
+            )
+            existing = result.scalars().all()
         prompt += f"\nThe previous build FAILED. Test results:\n{state.get('test')}\n"
         prompt += f"\nSandbox logs:\n{state.get('logs','')[:4000]}\n"
-        prompt += "\nExisting files:\n" + "\n".join(f["path"] for f in existing)
+        prompt += "\nExisting files:\n" + "\n".join(f.path for f in existing)
         prompt += "\nReturn ONLY the files you need to change/add (same output format), fixing minimally."
     if skills:
         prompt += f"\n\nRELEVANT SKILLS:\n{skills[:6000]}"
@@ -417,10 +483,19 @@ async def coding_node(state: BState) -> BState:
     model, provider = await config.get_agent_model("coding")
     raw = await llm.chat(CODING_SYS, prompt, temperature=0.2, max_tokens=28000, model=model, provider=provider)
     data = parse_code_output(raw)
-    await db.agent_executions.insert_one({
-        "id": str(uuid.uuid4()), "project_id": state["project_id"], "user_id": state["owner_id"],
-        "agent": "coding", "status": "done", "created_at": now_iso(),
-    })
+
+    async with AsyncSessionLocal() as session:
+        execution = AgentExecution(
+            id=str(uuid.uuid4()),
+            project_id=state["project_id"],
+            owner_id=state["owner_id"],
+            agent="coding",
+            status="done",
+            created_at=datetime.utcnow(),
+        )
+        session.add(execution)
+        await session.commit()
+
     if not data.get("files"):
         await add_message(project, "agent", "status",
                           "Coding agent could not produce valid output.", agent="coding")
@@ -437,7 +512,11 @@ async def coding_node(state: BState) -> BState:
 
     # For a fresh (new) build, clear any stale files from earlier generations.
     if not is_modify and not retry:
-        await db.project_files.delete_many({"project_id": state["project_id"]})
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                delete(ProjectFile).filter(ProjectFile.project_id == state["project_id"])
+            )
+            await session.commit()
 
     for f in files:
         path, code = f.get("path"), f.get("content", "")
@@ -449,11 +528,29 @@ async def coding_node(state: BState) -> BState:
             await mcp.save_code(state["session_id"], path, code, state["client_id"])
         except Exception as e:
             await add_message(project, "agent", "log", f"save_code failed for {path}: {e}", agent="coding")
-        await db.project_files.update_one(
-            {"project_id": state["project_id"], "path": path},
-            {"$set": {"id": str(uuid.uuid4()), "project_id": state["project_id"],
-                      "owner_id": state["owner_id"], "path": path, "content": code,
-                      "updated_at": now_iso()}}, upsert=True)
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(ProjectFile).filter(
+                    ProjectFile.project_id == state["project_id"],
+                    ProjectFile.path == path
+                )
+            )
+            existing_file = result.scalars().first()
+            if existing_file:
+                existing_file.content = code
+                existing_file.updated_at = datetime.utcnow()
+            else:
+                pf = ProjectFile(
+                    id=str(uuid.uuid4()),
+                    project_id=state["project_id"],
+                    path=path,
+                    content=code,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+                session.add(pf)
+            await session.commit()
 
     await add_message(project, "agent", "text",
                       f"{'Updated' if is_modify else 'Generated'} {len(files)} file(s). {data.get('summary','')}",
@@ -487,16 +584,41 @@ async def execute_node(state: BState) -> BState:
     state["logs"] = output
     state["exec_ok"] = bool(tunnel) or (isinstance(res, dict) and res.get("status") == "success")
 
-    await db.sandbox_sessions.update_one(
-        {"session_id": state["session_id"]},
-        {"$set": {"id": state["session_id"], "session_id": state["session_id"],
-                  "project_id": state["project_id"], "owner_id": state["owner_id"],
-                  "sandbox_name": res.get("sandbox_name") if isinstance(res, dict) else None,
-                  "tunnel_url": tunnel, "active": True, "updated_at": now_iso()}}, upsert=True)
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(SandboxSession).filter(SandboxSession.session_id == state["session_id"])
+        )
+        sandbox = result.scalars().first()
+        if sandbox:
+            sandbox.project_id = state["project_id"]
+            sandbox.owner_id = state["owner_id"]
+            sandbox.sandbox_name = res.get("sandbox_name") if isinstance(res, dict) else None
+            sandbox.tunnel_url = tunnel
+            sandbox.active = True
+            sandbox.updated_at = datetime.utcnow()
+        else:
+            sandbox = SandboxSession(
+                id=str(uuid.uuid4()),
+                session_id=state["session_id"],
+                project_id=state["project_id"],
+                owner_id=state["owner_id"],
+                sandbox_name=res.get("sandbox_name") if isinstance(res, dict) else None,
+                tunnel_url=tunnel,
+                active=True,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+            session.add(sandbox)
+        await session.commit()
 
     if tunnel:
-        await db.projects.update_one({"id": state["project_id"]},
-                                     {"$set": {"preview_url": tunnel, "updated_at": now_iso()}})
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(Project).filter(Project.id == state["project_id"]))
+            proj = result.scalars().first()
+            if proj:
+                proj.preview_url = tunnel
+                proj.updated_at = datetime.utcnow()
+                await session.commit()
         state["tunnel_url"] = tunnel
         await add_message(project, "agent", "status", f"Live preview is up: {tunnel}",
                           agent="coding", data={"tunnel_url": tunnel})
@@ -614,25 +736,47 @@ BUILD_GRAPH = _build_graph()
 
 async def _run_build(project):
     pid = project["id"]
-    owner = await db.users.find_one({"id": project["owner_id"]}, {"_id": 0})
-    client_id = owner.get("mcp_client_id", "grizon")
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(User).filter(User.id == project["owner_id"]))
+        owner = result.scalars().first()
+    client_id = (owner.mcp_client_id if owner else None) or "grizon"
+
     run_id = str(uuid.uuid4())
-    await db.workflow_runs.insert_one({
-        "id": run_id, "project_id": pid, "owner_id": project["owner_id"],
-        "status": "running", "created_at": now_iso(),
-    })
+    async with AsyncSessionLocal() as session:
+        run = WorkflowRun(
+            id=run_id,
+            project_id=pid,
+            owner_id=project["owner_id"],
+            status="running",
+            created_at=datetime.utcnow(),
+        )
+        session.add(run)
+        await session.commit()
+
     state: BState = {
         "project_id": pid, "owner_id": project["owner_id"], "client_id": client_id,
-        "session_id": project["session_id"], "plan": project.get("workflow", {}).get("plan", {}),
+        "session_id": project.get("session_id", ""), "plan": project.get("workflow", {}).get("plan", {}),
         "retry": project.get("workflow", {}).get("retry_count", 0),
     }
     try:
         await BUILD_GRAPH.ainvoke(state, config={"recursion_limit": 30})
-        await db.workflow_runs.update_one({"id": run_id}, {"$set": {"status": "done"}})
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(WorkflowRun).filter(WorkflowRun.id == run_id))
+            run = result.scalars().first()
+            if run:
+                run.status = "done"
+                await session.commit()
     except Exception as e:
         await set_workflow(pid, status="failed")
         await add_message(project, "system", "status", f"Build crashed: {e}")
-        await db.workflow_runs.update_one({"id": run_id}, {"$set": {"status": "error", "error": str(e)}})
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(WorkflowRun).filter(WorkflowRun.id == run_id))
+            run = result.scalars().first()
+            if run:
+                run.status = "error"
+                run.error = str(e)
+                await session.commit()
     finally:
         _running_tasks.pop(pid, None)
 

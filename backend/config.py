@@ -2,22 +2,28 @@
 Values are stored in system_config and fall back to environment variables.
 """
 import os
-from db import db
+from sqlalchemy import select
+from db import AsyncSessionLocal
+from models import SystemConfig
 
 AGENTS = ["manager", "question", "planner", "coding", "testing"]
 
 
 async def get_integrations() -> dict:
-    doc = await db.system_config.find_one({"key": "integrations"}, {"_id": 0}) or {}
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(SystemConfig).filter(SystemConfig.id == "config"))
+        doc = result.scalars().first()
+        integ = doc.integrations if doc else {}
+    
     return {
-        "sarvam_api_key": doc.get("sarvam_api_key") or os.environ.get("SARVAM_API_KEY", ""),
-        "sarvam_base_url": doc.get("sarvam_base_url") or os.environ.get("SARVAM_BASE_URL", ""),
-        "sarvam_model": doc.get("sarvam_model") or os.environ.get("SARVAM_MODEL", "glm5.2"),
-        "openrouter_api_key": doc.get("openrouter_api_key") or os.environ.get("OPENROUTER_API_KEY", ""),
-        "openrouter_base_url": doc.get("openrouter_base_url") or os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
-        "openrouter_model": doc.get("openrouter_model") or os.environ.get("OPENROUTER_MODEL", "meta-llama/llama-2-70b-chat"),
-        "mcp_url": doc.get("mcp_url") or os.environ.get("SANDBOX_MCP_URL", ""),
-        "mcp_token": doc.get("mcp_token") or os.environ.get("SANDBOX_MCP_TOKEN", ""),
+        "sarvam_api_key": integ.get("sarvam_api_key") or os.environ.get("SARVAM_API_KEY", ""),
+        "sarvam_base_url": integ.get("sarvam_base_url") or os.environ.get("SARVAM_BASE_URL", ""),
+        "sarvam_model": integ.get("sarvam_model") or os.environ.get("SARVAM_MODEL", "glm5.2"),
+        "openrouter_api_key": integ.get("openrouter_api_key") or os.environ.get("OPENROUTER_API_KEY", ""),
+        "openrouter_base_url": integ.get("openrouter_base_url") or os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        "openrouter_model": integ.get("openrouter_model") or os.environ.get("OPENROUTER_MODEL", "google/gemini-3.7-flash"),
+        "mcp_url": integ.get("mcp_url") or os.environ.get("SANDBOX_MCP_URL", ""),
+        "mcp_token": integ.get("mcp_token") or os.environ.get("SANDBOX_MCP_TOKEN", ""),
     }
 
 
@@ -26,17 +32,28 @@ async def update_integrations(fields: dict):
              if k in ("sarvam_api_key", "sarvam_base_url", "sarvam_model", 
                      "openrouter_api_key", "openrouter_base_url", "openrouter_model",
                      "mcp_url", "mcp_token") and v is not None}
-    await db.system_config.update_one({"key": "integrations"},
-                                      {"$set": {"key": "integrations", **clean}}, upsert=True)
+    
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(SystemConfig).filter(SystemConfig.id == "config"))
+        config = result.scalars().first()
+        if config:
+            config.integrations.update(clean)
+        else:
+            config = SystemConfig(id="config", integrations=clean)
+            session.add(config)
+        await session.commit()
 
 
 async def get_agent_models() -> dict:
     """Returns {agent: {model: "...", provider: "sarvam|openrouter"}}"""
-    doc = await db.system_config.find_one({"key": "agent_models"}, {"_id": 0}) or {}
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(SystemConfig).filter(SystemConfig.id == "config"))
+        doc = result.scalars().first()
+        models = doc.agent_models if doc else {}
+    
     integ = await get_integrations()
     default_model = integ["sarvam_model"]
     default_provider = "sarvam"
-    models = doc.get("models", {})
     
     result = {}
     for a in AGENTS:
@@ -67,5 +84,13 @@ async def set_agent_models(models: dict):
                 "model": models[a].get("model") or "glm5.2",
                 "provider": models[a].get("provider") or "sarvam"
             }
-    await db.system_config.update_one({"key": "agent_models"},
-                                      {"$set": {"key": "agent_models", "models": clean}}, upsert=True)
+    
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(SystemConfig).filter(SystemConfig.id == "config"))
+        config = result.scalars().first()
+        if config:
+            config.agent_models = clean
+        else:
+            config = SystemConfig(id="config", agent_models=clean)
+            session.add(config)
+        await session.commit()

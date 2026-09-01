@@ -1,62 +1,72 @@
+"""Database setup and session management for PostgreSQL with SQLAlchemy"""
 import os
-from motor.motor_asyncio import AsyncIOMotorClient
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.pool import NullPool
+from models import Base, User, Project, Message, ProjectFile, Skill, SystemConfig, Event, AuditLog, WorkflowRun, SandboxSession, AgentExecution
 
-mongo_url = os.environ["MONGO_URL"]
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ["DB_NAME"]]
+# PostgreSQL connection string - use DATABASE_URL env var or construct from components
+DATABASE_URL = os.environ.get("DATABASE_URL") or (
+    f"postgresql+asyncpg://{os.environ.get('DB_USER', 'postgres')}:"
+    f"{os.environ.get('DB_PASSWORD', 'password')}@"
+    f"{os.environ.get('DB_HOST', 'localhost')}:"
+    f"{os.environ.get('DB_PORT', '5432')}/"
+    f"{os.environ.get('DB_NAME', 'grizon_ai')}"
+)
 
-# Collections that the Admin dashboard can browse
-MANAGED_COLLECTIONS = [
-    "users",
-    "projects",
-    "conversations",
-    "messages",
-    "project_files",
-    "agent_executions",
-    "workflow_runs",
-    "sandbox_sessions",
-    "checkpoints",
-    "memories",
-    "events",
-    "agent_prompts",
-    "skills",
-    "system_config",
-    "audit_logs",
-]
+# Create async engine
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    poolclass=NullPool,
+    future=True,
+)
+
+# Session factory
+AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+async def get_db():
+    """Dependency for FastAPI to get DB session"""
+    async with AsyncSessionLocal() as session:
+        yield session
+
+
+async def init_db():
+    """Create all tables"""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 
 async def init_indexes():
-    await db.users.create_index("email", unique=True)
-    await db.users.create_index("id", unique=True)
-    await db.projects.create_index("owner_id")
-    await db.projects.create_index("id", unique=True)
-    await db.conversations.create_index("project_id")
-    await db.messages.create_index("project_id")
-    await db.project_files.create_index("project_id")
-    await db.skills.create_index("name")
-    await db.login_attempts.create_index("identifier")
+    """Create indexes (already handled by SQLAlchemy table definitions)"""
+    pass
 
 
 async def log_event(user_id: str, project_id: str, kind: str, data: dict):
-    import uuid
-    from datetime import datetime, timezone
-    await db.events.insert_one({
-        "id": str(uuid.uuid4()),
-        "user_id": user_id,
-        "project_id": project_id,
-        "kind": kind,
-        "data": data,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    })
+    """Log an event to the database"""
+    async with AsyncSessionLocal() as session:
+        event = Event(
+            user_id=user_id,
+            project_id=project_id,
+            kind=kind,
+            data=data,
+        )
+        session.add(event)
+        await session.commit()
 
 
 async def audit(user_id: str, action: str, detail: dict):
-    import uuid
-    from datetime import datetime, timezone
-    await db.audit_logs.insert_one({
-        "id": str(uuid.uuid4()),
-        "user_id": user_id,
-        "action": action,
-        "detail": detail,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    })
+    """Log an audit entry to the database"""
+    async with AsyncSessionLocal() as session:
+        log = AuditLog(
+            user_id=user_id,
+            action=action,
+            detail=detail,
+        )
+        session.add(log)
+        await session.commit()
+
+
+MANAGED_COLLECTIONS = ["users", "projects", "messages", "project_files", "skills",
+                       "system_config", "events", "audit_logs", "workflow_runs",
+                       "sandbox_sessions", "agent_executions"]

@@ -1,15 +1,17 @@
 import os
 import logging
+import traceback
 from dotenv import load_dotenv
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 
-from db import init_indexes
+from db import init_db, init_indexes
 from auth import router as auth_router, seed_admin
 from projects_router import router as projects_router
 from builder_router import router as builder_router
@@ -21,6 +23,13 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("grizon")
 
 app = FastAPI(title="Grizon AI")
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled error: {exc}")
+    traceback.print_exc()
+    return JSONResponse(status_code=500, content={"detail": str(exc)})
 
 health = APIRouter(prefix="/api")
 
@@ -54,6 +63,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
+    await init_db()
     await init_indexes()
     await seed_admin()
     await seed_skills()

@@ -7,6 +7,18 @@ import { ChatMessage, QuestionCard, PlanCard, AgentTimeline } from "@/components
 
 const ACTIVE = ["building", "testing", "planning"];
 
+const STATUS_STYLE = {
+  complete: { backgroundColor: "color-mix(in srgb, var(--moss) 15%, transparent)", color: "var(--moss)" },
+  failed: { backgroundColor: "color-mix(in srgb, var(--danger) 15%, transparent)", color: "var(--danger)" },
+  idle: { backgroundColor: "var(--sand)", color: "var(--muted-foreground)" },
+};
+
+function statusStyle(status, isActive) {
+  if (STATUS_STYLE[status]) return STATUS_STYLE[status];
+  if (isActive) return { backgroundColor: "color-mix(in srgb, var(--gold) 20%, transparent)", color: "var(--gold)" };
+  return STATUS_STYLE.idle;
+}
+
 export default function Builder() {
   const { projectId } = useParams();
   const location = useLocation();
@@ -48,7 +60,6 @@ export default function Builder() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // fetch file contents only when the Code tab is open or a build is streaming files
   useEffect(() => {
     if (rightTab !== "code" && !isActive) return;
     fetchFiles();
@@ -70,7 +81,6 @@ export default function Builder() {
     return () => clearInterval(t);
   }, [fetchAll]);
 
-  // only auto-scroll when the user is already near the bottom
   useEffect(() => {
     if (atBottom.current) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
@@ -115,27 +125,44 @@ export default function Builder() {
     setSelectedFile(path);
   };
 
-  if (!project) return <div className="min-h-screen flex items-center justify-center font-mono text-ink/50">Loading project…</div>;
+  if (!project) return <div className="min-h-screen flex items-center justify-center font-mono" style={{ color: "var(--muted-foreground)" }}>Loading project…</div>;
 
   const currentFile = files.find((f) => f.path === selectedFile) || files[0];
 
   return (
-    <div className="h-screen flex flex-col">
-      <header className="h-14 border-b border-[#cecac8] bg-parchment flex items-center justify-between px-4 shrink-0">
+    <div className="h-screen flex flex-col" style={{ backgroundColor: "var(--parchment)", color: "var(--ink)" }}>
+      {/* Header */}
+      <header className="h-14 border-b flex items-center justify-between px-4 shrink-0"
+        style={{ borderColor: "var(--border)", backgroundColor: "var(--parchment)" }}>
         <div className="flex items-center gap-3 min-w-0">
-          <button data-testid="back-home-btn" onClick={() => navigate("/")} className="text-ink/60 hover:text-ink"><ArrowLeft className="w-5 h-5" /></button>
-          <h1 className="font-heading text-xl text-ink truncate">{project.title}</h1>
-          <span className={`font-mono text-[10px] uppercase px-2 py-0.5 rounded-sm ${status === "complete" ? "bg-moss/15 text-moss" : status === "failed" ? "bg-danger/15 text-danger" : isActive ? "bg-gold/20 text-gold" : "bg-sand text-ink/60"}`}>{status}</span>
+          <button data-testid="back-home-btn" onClick={() => navigate("/")} style={{ color: "var(--muted-foreground)" }} className="hover:opacity-70">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <h1 className="font-heading text-xl truncate" style={{ color: "var(--ink)" }}>{project.title}</h1>
+          <span className="font-mono text-[10px] uppercase px-2 py-0.5 rounded-sm" style={statusStyle(status, isActive)}>
+            {status}
+          </span>
         </div>
         <div className="flex items-center gap-2">
-          {isActive && <button data-testid="stop-btn" onClick={stop} className="flex items-center gap-1.5 bg-danger text-white rounded-sm px-3 py-1.5 text-sm"><Square className="w-3.5 h-3.5" /> Stop</button>}
-          {(status === "failed" || status === "paused" || status === "complete") && <button data-testid="retry-btn" onClick={retry} className="flex items-center gap-1.5 border border-[#cecac8] rounded-sm px-3 py-1.5 text-sm hover:bg-sand"><RotateCw className="w-3.5 h-3.5" /> Retry</button>}
+          {isActive && (
+            <button data-testid="stop-btn" onClick={stop} className="flex items-center gap-1.5 text-white rounded-sm px-3 py-1.5 text-sm"
+              style={{ backgroundColor: "var(--danger)" }}>
+              <Square className="w-3.5 h-3.5" /> Stop
+            </button>
+          )}
+          {(status === "failed" || status === "paused" || status === "complete") && (
+            <button data-testid="retry-btn" onClick={retry} className="flex items-center gap-1.5 border rounded-sm px-3 py-1.5 text-sm hover:opacity-80"
+              style={{ borderColor: "var(--border)", color: "var(--foreground)" }}>
+              <RotateCw className="w-3.5 h-3.5" /> Retry
+            </button>
+          )}
         </div>
       </header>
 
       <div className="grid grid-cols-12 flex-1 min-h-0">
-        {/* LEFT 40% */}
-        <section className="col-span-12 lg:col-span-5 flex flex-col border-r border-[#cecac8] min-h-0">
+        {/* LEFT — Chat */}
+        <section className="col-span-12 lg:col-span-5 flex flex-col border-r min-h-0"
+          style={{ borderColor: "var(--border)" }}>
           <AgentTimeline status={status} />
           <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto p-4 space-y-3" data-testid="conversation-scroll">
             {messages.map((m) => {
@@ -143,38 +170,67 @@ export default function Builder() {
               if (m.type === "questions") return <QuestionCard key={m.id} data={m.data} locked={status !== "asking"} onSubmit={submitAnswers} />;
               return <ChatMessage key={m.id} m={m} onOpenFile={openFile} />;
             })}
-            {isActive && <div className="flex items-center gap-2 font-mono text-[11px] text-forest pl-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Agents working…</div>}
+            {isActive && (
+              <div className="flex items-center gap-2 font-mono text-[11px] pl-1" style={{ color: "var(--forest)" }}>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Agents working…
+              </div>
+            )}
           </div>
-          <div className="border-t border-[#cecac8] p-3 bg-parchment">
-            <div className="flex items-end gap-2 bg-white border border-[#cecac8] rounded-sm p-2">
+          <div className="border-t p-3" style={{ borderColor: "var(--border)", backgroundColor: "var(--parchment)" }}>
+            <div className="flex items-end gap-2 border rounded-sm p-2" style={{ backgroundColor: "var(--card)", borderColor: "var(--border)" }}>
               <textarea ref={inputRef} data-testid="builder-input" value={input} onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
                 placeholder={status === "asking" ? "Or type your answer…" : status === "awaiting_approval" ? "Request changes to the plan…" : "Send an instruction…"}
-                rows={2} className="flex-1 resize-none bg-transparent font-mono text-sm outline-none placeholder:text-ink/40" />
-              <button data-testid="send-btn" onClick={send} disabled={sending || !input.trim()} className="bg-forest hover:bg-forest-dark text-white rounded-sm p-2 disabled:opacity-40 transition-transform hover:-translate-y-px">
+                rows={2} className="flex-1 resize-none bg-transparent font-mono text-sm outline-none"
+                style={{ color: "var(--foreground)" }} />
+              <button data-testid="send-btn" onClick={send} disabled={sending || !input.trim()}
+                className="text-white rounded-sm p-2 disabled:opacity-40 transition-transform hover:-translate-y-px"
+                style={{ backgroundColor: "var(--forest)" }}>
                 {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUp className="w-4 h-4" />}
               </button>
             </div>
           </div>
         </section>
 
-        {/* RIGHT 60% */}
-        <section className="hidden lg:flex col-span-7 flex-col bg-sand p-4 min-h-0">
-          <div className="flex-1 flex flex-col bg-white border border-[#cecac8] rounded-sm overflow-hidden min-h-0">
-            <div className="h-10 bg-sand border-b border-[#cecac8] flex items-center gap-2 px-3 shrink-0">
+        {/* RIGHT — Preview / Code */}
+        <section className="hidden lg:flex col-span-7 flex-col p-4 min-h-0" style={{ backgroundColor: "var(--sand)" }}>
+          <div className="flex-1 flex flex-col border rounded-sm overflow-hidden min-h-0"
+            style={{ backgroundColor: "var(--card)", borderColor: "var(--border)" }}>
+            {/* Tab bar */}
+            <div className="h-10 border-b flex items-center gap-2 px-3 shrink-0"
+              style={{ backgroundColor: "var(--sand)", borderColor: "var(--border)" }}>
               <div className="flex items-center gap-1 mr-1">
-                <button data-testid="tab-preview-btn" onClick={() => setRightTab("preview")} className={`flex items-center gap-1 font-mono text-[11px] px-2 py-1 rounded-sm ${rightTab === "preview" ? "bg-forest text-white" : "text-ink/60 hover:bg-white"}`}><Eye className="w-3.5 h-3.5" /> Preview</button>
-                <button data-testid="tab-code-btn" onClick={() => setRightTab("code")} className={`flex items-center gap-1 font-mono text-[11px] px-2 py-1 rounded-sm ${rightTab === "code" ? "bg-forest text-white" : "text-ink/60 hover:bg-white"}`}><Code2 className="w-3.5 h-3.5" /> Code {files.length ? `(${files.length})` : ""}</button>
+                <button data-testid="tab-preview-btn" onClick={() => setRightTab("preview")}
+                  className="flex items-center gap-1 font-mono text-[11px] px-2 py-1 rounded-sm"
+                  style={rightTab === "preview" ? { backgroundColor: "var(--forest)", color: "white" } : { color: "var(--muted-foreground)" }}>
+                  <Eye className="w-3.5 h-3.5" /> Preview
+                </button>
+                <button data-testid="tab-code-btn" onClick={() => setRightTab("code")}
+                  className="flex items-center gap-1 font-mono text-[11px] px-2 py-1 rounded-sm"
+                  style={rightTab === "code" ? { backgroundColor: "var(--forest)", color: "white" } : { color: "var(--muted-foreground)" }}>
+                  <Code2 className="w-3.5 h-3.5" /> Code {files.length ? `(${files.length})` : ""}
+                </button>
               </div>
               {rightTab === "preview" && (
                 <>
-                  <div className="flex-1 flex items-center gap-2 bg-white border border-[#cecac8] rounded-sm px-2 py-1 min-w-0">
-                    <Globe className="w-3.5 h-3.5 text-ink/40 shrink-0" />
-                    <span data-testid="preview-url" className="font-mono text-[11px] text-ink/60 truncate">{project.preview_url || "waiting for sandbox…"}</span>
+                  <div className="flex-1 flex items-center gap-2 border rounded-sm px-2 py-1 min-w-0"
+                    style={{ backgroundColor: "var(--card)", borderColor: "var(--border)" }}>
+                    <Globe className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--muted-foreground)" }} />
+                    <span data-testid="preview-url" className="font-mono text-[11px] truncate" style={{ color: "var(--muted-foreground)" }}>
+                      {project.preview_url || "waiting for sandbox…"}
+                    </span>
                   </div>
-                  <button data-testid="refresh-preview-btn" onClick={refreshPreview} className="text-ink/50 hover:text-ink"><RefreshCw className="w-4 h-4" /></button>
-                  <button data-testid="open-preview-tab-btn" onClick={() => project.preview_url && window.open(project.preview_url, "_blank")} disabled={!project.preview_url} className="text-ink/50 hover:text-ink disabled:opacity-50 disabled:cursor-not-allowed"><ExternalLink className="w-4 h-4" /></button>
-                  <button data-testid="toggle-logs-btn" onClick={loadLogs} className={`${showLogs ? "text-forest" : "text-ink/50"} hover:text-ink`}><Terminal className="w-4 h-4" /></button>
+                  <button data-testid="refresh-preview-btn" onClick={refreshPreview} style={{ color: "var(--muted-foreground)" }} className="hover:opacity-70">
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                  <button data-testid="open-preview-tab-btn" onClick={() => project.preview_url && window.open(project.preview_url, "_blank")} disabled={!project.preview_url}
+                    className="disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-70" style={{ color: "var(--muted-foreground)" }}>
+                    <ExternalLink className="w-4 h-4" />
+                  </button>
+                  <button data-testid="toggle-logs-btn" onClick={loadLogs}
+                    className="hover:opacity-70" style={{ color: showLogs ? "var(--forest)" : "var(--muted-foreground)" }}>
+                    <Terminal className="w-4 h-4" />
+                  </button>
                 </>
               )}
             </div>
@@ -183,28 +239,36 @@ export default function Builder() {
               <>
                 <div className="flex-1 min-h-0 relative">
                   {isActive ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-ink/50 font-mono text-sm gap-3" data-testid="preview-building">
-                      <Loader2 className="w-7 h-7 animate-spin text-forest" />
+                    <div className="w-full h-full flex flex-col items-center justify-center font-mono text-sm gap-3" style={{ color: "var(--muted-foreground)" }} data-testid="preview-building">
+                      <Loader2 className="w-7 h-7 animate-spin" style={{ color: "var(--forest)" }} />
                       <span>Preview is building…</span>
-                      <span className="text-[11px] text-ink/40">installing dependencies & starting the sandbox</span>
+                      <span className="text-[11px]" style={{ color: "var(--muted-foreground)", opacity: 0.6 }}>installing dependencies & starting the sandbox</span>
                     </div>
                   ) : project.preview_url ? (
                     <iframe key={previewKey} data-testid="preview-iframe" title="preview" src={project.preview_url} className="w-full h-full border-0" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-ink/40 font-mono text-sm">No preview yet. Approve a plan to build.</div>
+                    <div className="w-full h-full flex items-center justify-center font-mono text-sm" style={{ color: "var(--muted-foreground)" }}>No preview yet. Approve a plan to build.</div>
                   )}
                 </div>
-                {showLogs && <pre data-testid="logs-pane" className="h-48 shrink-0 bg-ink text-parchment/90 p-3 text-[11px] font-mono overflow-auto whitespace-pre-wrap border-t border-[#cecac8]">{logs || "(no logs loaded)"}</pre>}
+                {showLogs && (
+                  <pre data-testid="logs-pane" className="h-48 shrink-0 p-3 text-[11px] font-mono overflow-auto whitespace-pre-wrap border-t"
+                    style={{ backgroundColor: "var(--ink)", color: "var(--parchment)", borderColor: "var(--border)" }}>
+                    {logs || "(no logs loaded)"}
+                  </pre>
+                )}
               </>
             ) : (
               <div className="flex-1 grid grid-cols-3 min-h-0" data-testid="code-view">
-                <div className="col-span-1 border-r border-[#cecac8] overflow-y-auto bg-parchment/40">
+                <div className="col-span-1 border-r overflow-y-auto" style={{ borderColor: "var(--border)", backgroundColor: "color-mix(in srgb, var(--parchment) 40%, transparent)" }}>
                   {files.length === 0 ? (
-                    <div className="p-4 font-mono text-[11px] text-ink/40">No files yet.</div>
+                    <div className="p-4 font-mono text-[11px]" style={{ color: "var(--muted-foreground)" }}>No files yet.</div>
                   ) : (
                     [...files].sort((a, b) => a.path.localeCompare(b.path)).map((f) => (
                       <button key={f.path} data-testid={`file-item-${f.path}`} title={f.path} onClick={() => setSelectedFile(f.path)}
-                        className={`w-full text-left flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border-b border-[#ece8e4] truncate ${currentFile?.path === f.path ? "bg-forest text-white" : "text-ink/70 hover:bg-sand"}`}>
+                        className="w-full text-left flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border-b truncate"
+                        style={currentFile?.path === f.path
+                          ? { backgroundColor: "var(--forest)", color: "white", borderColor: "var(--border)" }
+                          : { color: "var(--foreground)", borderColor: "var(--sand)" }}>
                         <FileCode2 className="w-3 h-3 shrink-0" /> <span className="truncate">{f.path}</span>
                       </button>
                     ))
@@ -213,10 +277,16 @@ export default function Builder() {
                 <div className="col-span-2 min-h-0 overflow-auto">
                   {currentFile ? (
                     <>
-                      <div className="sticky top-0 bg-sand border-b border-[#cecac8] px-3 py-1.5 font-mono text-[11px] text-ink/70">{currentFile.path}</div>
-                      <pre className="p-3 text-[11px] font-mono text-ink/85 whitespace-pre-wrap leading-relaxed">{currentFile.content}</pre>
+                      <div className="sticky top-0 border-b px-3 py-1.5 font-mono text-[11px]"
+                        style={{ backgroundColor: "var(--sand)", borderColor: "var(--border)", color: "var(--foreground)" }}>
+                        {currentFile.path}
+                      </div>
+                      <pre className="p-3 text-[11px] font-mono whitespace-pre-wrap leading-relaxed"
+                        style={{ color: "var(--foreground)" }}>
+                        {currentFile.content}
+                      </pre>
                     </>
-                  ) : <div className="p-4 font-mono text-[11px] text-ink/40">Select a file.</div>}
+                  ) : <div className="p-4 font-mono text-[11px]" style={{ color: "var(--muted-foreground)" }}>Select a file.</div>}
                 </div>
               </div>
             )}
