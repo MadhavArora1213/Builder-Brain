@@ -1,0 +1,73 @@
+{
+  "summary": "Iteration-2 full retest of Grizon AI. Backend: extended /app/backend/tests/backend_test.py to 43 pytest tests (all 43 PASSED, ~64s) covering the new admin agent-model config, admin integrations settings (+admin-only 403/401), secrets-never-returned, the Q&A MCQ flow (message->asking with choice/database/secret questions -> /answers -> awaiting_approval with a real plan), ownership/isolation on /answers, the clear-prompt regression (awaiting_approval + build_mode='new'), plus all iteration-1 regressions (delete project now really deletes -> 404, login lockout returns 423 after 5 fails, multi-user isolation, role protection, project CRUD, admin stats/tables/skills). Frontend: verified admin Agents tab (5 model inputs all glm5.2 + save toast), Integrations tab (sarvam_model/base_url/api_key(password)/mcp_url/mcp_token(password) + save toast), Builder Preview/Code toggle on the completed 'Test Expense' project (23 file items, click file -> full source shown), file-chip and per-file 'file' message clickability (both switch to Code tab and open the correct file), 'Preview is building…' overlay with spinner and NO iframe for a project in 'building', and the chat auto-scroll fix (scrollTop held at 0 across 8s / 3 polling cycles). QuestionCard MCQ UI exercised end-to-end: 8 choice buttons + 1 secret password input -> Submit Answers -> plan-card rendered (~40s) and the API key was stored as project.secrets.LLM_API_KEY, never echoed back (chat shows 'provided securely as env LLM_API_KEY'). No critical or blocking issues found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "coding_node / GET /api/projects/{id}/files",
+        "issue": "project_files are only upserted, never pruned. After several build attempts the Code view lists stale/orphaned files from earlier generations ('Test Expense' has 23 stored files while the last successful run generated 14, including a backend/server.ts that is not part of the final client-side app). Consider deleting files not present in the latest non-modify generation."
+      },
+      {
+        "endpoint": "POST /api/projects/{id}/answers",
+        "issue": "No validation that answers correspond to the pending questions message or that 'required' questions are answered; an empty answers array is accepted and goes straight to planning with unchanged requirements."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "QuestionCard (parts.jsx)",
+        "issue": "Submit Answers has no loading/disabled state and no required-field validation: it can be clicked repeatedly during the 30-60s planner call (card only locks on the next 3s poll), which can fire duplicate /answers -> duplicate plan messages. Also empty required (*) answers submit silently.",
+        "selector": "[data-testid=\"submit-answers-btn\"]",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Builder Code view",
+        "issues": [
+          "Code pane is plain monospace text with no syntax highlighting, line numbers or copy button; long lines wrap awkwardly (cosmetic).",
+          "Long file paths in the file list are truncated with no tooltip/title attribute (e.g. frontend/src/components/MonthlyExpenseChart.…)."
+        ]
+      },
+      {
+        "screen": "Admin dashboard",
+        "issues": [
+          "Sonner toasts render on top of the header's user email/logout control (top-right), briefly hiding it."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/seed_asking_project.py",
+    "/app/backend/tests/seed_ui_fixtures.py",
+    "/app/backend/tests/cleanup_ui_fixtures.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Optional: disable submit-answers-btn while /answers is in flight and block submission when a required question is unanswered.",
+    "Optional: prune project_files that are no longer produced by a fresh (build_mode=new) generation so the Code view does not show stale files.",
+    "Optional: add syntax highlighting + title tooltips in the Code view file list/pane."
+  ],
+  "critical_code_review_comments": [
+    "Builder.jsx polls GET /projects/{id}, /messages and /files every 3s; /files returns full file CONTENT (23 files here), so the browser re-downloads the whole codebase every 3 seconds. Fetch file contents lazily (per-file endpoint) or return only paths in the list call.",
+    "orchestrator.py is now 649 lines and mixes all agent prompts + the LangGraph build loop; split into per-agent modules before it crosses the 700-line guideline.",
+    "submit_answers() writes secrets with $set on 'secrets.<KEY>' but never validates the env-name shape beyond upper/space replacement; a malicious 'key' containing dots would create nested Mongo paths. Sanitize to ^[A-Z0-9_]+$.",
+    "Builder.jsx submitAnswers/approve/stop/retry swallow errors in bare catch blocks (approve/stop/retry have empty catch) — no error state surfaced to the user."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (added TestAdminAgentModels, TestAdminIntegrations, TestSecretsNotLeaked, TestQuestionFlow, TestClearPromptPlan, TestCompletedProjectFiles)",
+    "/app/backend/tests/seed_asking_project.py (new helper)",
+    "/app/backend/tests/seed_ui_fixtures.py (new helper)",
+    "/app/backend/tests/cleanup_ui_fixtures.py (new helper)"
+  ],
+  "success_rate": {"backend": "100% (43/43 pytest)", "frontend": "100% of the 8 requested flows verified (1 medium UX gap on Submit Answers)"},
+  "seed_data_creation": "Created ~23 TEST_*@example.com users with throwaway projects, an admin-owned 'TEST_UI_asking' project driven to the asking state, a synthetic 'TEST_UI_building' project (workflow.status=building) and one synthetic type='file' chat message on 'Test Expense'. ALL of it was removed afterwards via /app/backend/tests/cleanup_ui_fixtures.py (DB now: 15 projects, 8 users; 'Test Expense' and seeded skills untouched).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@grizon.ai / Grizon@2026 (admin). Normal users: register via POST /api/auth/register with @example.com emails, password Test@1234 (.test TLD rejected). Login form testids are email-input / password-input / submit-auth-btn (NOT login-email/login-submit).",
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/backend_test.py -v (43 tests, ~65s, uses pytest.ini -n 2 loadscope; the message->plan and answers->plan tests hit the real Sarvam LLM, 20-60s each). /approve and /retry were NOT called (real sandbox build 3-5 min). Useful ids: completed project 'Test Expense' = 21f75979-d49b-4fba-891e-289f4bcab828 (23 files, coding text messages with data.files -> 46 file chips, but ZERO type='file' messages since it predates per-file streaming — to test chat-file rendering, insert a synthetic message with seed_ui_fixtures.py). Building overlay can only be tested by seeding workflow.status='building' (same script). QuestionCard: use seed_asking_project.py to get a project in 'asking' (vague prompt 'build me a chatbot app' reliably yields 4 MCQ questions incl. SQLite/PostgreSQL and a secret LLM_API_KEY question). Always run cleanup_ui_fixtures.py afterwards.",
+  "rca_of_the_issue": "No defects reproduced this iteration. Verified fixes: (1) chat auto-scroll — Builder.jsx keeps an atBottom ref updated in onScroll and only scrolls when within 80px of the bottom; measured scrollTop stayed 0 over 3 polling cycles. (2) preview building — the iframe is gated on !isActive && preview_url, so a project with status 'building' renders data-testid=preview-building with a spinner and no iframe (confirmed). (3) secrets — projects_router pops 'secrets' on GET and projects with a stored LLM_API_KEY returned no 'secrets' key."
+}

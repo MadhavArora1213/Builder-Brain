@@ -1,0 +1,59 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 24 20% 96%;
+  --foreground: 24 9% 10%;
+  --card: 0 0% 100%;
+  --card-foreground: 24 9% 10%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 24 9% 10%;
+  --primary: 165 23% 21%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 30 16% 91%;
+  --secondary-foreground: 24 9% 10%;
+  --muted: 30 16% 91%;
+  --muted-foreground: 24 6% 44%;
+  --accent: 40 30% 47%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 8 48% 47%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 30 8% 79%;
+  --input: 30 8% 79%;
+  --ring: 165 23% 21%;
+  --radius: 0.25rem;
+}
+
+* { border-color: hsl(var(--border)); }
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: #f6f3f1;
+  color: #1c1917;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-heading { font-family: 'Cormorant Garamond', serif; }
+.font-mono { font-family: 'IBM Plex Mono', monospace; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cecac8; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #a8a29e; }
+
+@keyframes fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.animate-fade-up { animation: fade-up 0.4s ease-out both; }
+
+@keyframes pulse-border { 0%,100% { border-color: #9c8152; } 50% { border-color: #2a433d; } }
+.active-agent { animation: pulse-border 1.5s ease-in-out infinite; }
+
+.md-body h1 { font-family:'Cormorant Garamond',serif; font-size:1.6rem; font-weight:600; margin:.6rem 0 .3rem; }
+.md-body h2 { font-family:'Cormorant Garamond',serif; font-size:1.3rem; font-weight:600; margin:.5rem 0 .25rem; }
+.md-body h3 { font-weight:600; font-size:.95rem; margin:.4rem 0 .2rem; }
+.md-body ul { margin:.25rem 0 .5rem 1rem; list-style: disc; }
+.md-body li { margin:.1rem 0; }
+.md-body p { margin:.3rem 0; }

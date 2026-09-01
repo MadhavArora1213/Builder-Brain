@@ -1,0 +1,136 @@
+{
+  "project_name": "Grizon AI",
+  "theme_mode": "light",
+  "design_concept": {
+    "archetype": "ORGANIC & EARTHY / SCHOLARLY TECH",
+    "description": "A fusion of an architect's drafting board and modern AI capabilities. The design uses a tactile 'Parchment' base rather than standard SaaS white, grounded by deep 'Ink' typography and monospaced technical elements. It feels like magic turning into mathematics."
+  },
+  "typography": {
+    "headings": {
+      "family": "Cormorant Garamond",
+      "weights": ["light", "regular", "semibold"],
+      "usage": "Used exclusively for the greeting, project titles, and major page headers. Never use generic sans for these."
+    },
+    "body": {
+      "family": "Inter",
+      "weights": ["regular", "medium"],
+      "usage": "Standard UI labels, buttons, and navigation."
+    },
+    "mono": {
+      "family": "IBM Plex Mono",
+      "weights": ["regular", "medium"],
+      "usage": "Used for chat messages, builder logs, AI agent statuses, and tunnel URLs. This creates the 'technical blueprint' contrast."
+    }
+  },
+  "colors": {
+    "background": {
+      "main": "#f6f3f1",
+      "secondary": "#ece8e4",
+      "surface": "#ffffff"
+    },
+    "text": {
+      "primary": "#1c1917",
+      "secondary": "#57534e",
+      "muted": "#a8a29e"
+    },
+    "borders": {
+      "default": "#cecac8",
+      "focus": "#2a433d"
+    },
+    "accents": {
+      "primary": "#2a433d",
+      "primary_hover": "#1e332d",
+      "danger": "#b34d3e",
+      "success": "#4b6c56",
+      "ai_indicator": "#9c8152"
+    }
+  },
+  "visual_enhancers": {
+    "shadows": {
+      "sm": "0 1px 2px 0 rgba(28, 25, 23, 0.05)",
+      "md": "0 4px 6px -1px rgba(28, 25, 23, 0.08), 0 2px 4px -1px rgba(28, 25, 23, 0.04)",
+      "lg": "0 10px 15px -3px rgba(28, 25, 23, 0.1), 0 4px 6px -2px rgba(28, 25, 23, 0.05)"
+    },
+    "borders": {
+      "radius": "rounded-none md:rounded-sm",
+      "style": "Always use a sharp 1px solid border (#cecac8) for cards, chat inputs, and the browser preview frame. Avoid soft large radii."
+    },
+    "noise": "Apply a very subtle SVG noise overlay (opacity 2-3%) to the #f6f3f1 background to enhance the parchment tactile feel."
+  },
+  "components": {
+    "buttons": {
+      "primary": "Solid #2a433d background, #ffffff text, rounded-sm, transition-transform hover:-translate-y-px.",
+      "secondary": "Transparent background, 1px border #cecac8, #1c1917 text, hover:bg-[#ece8e4].",
+      "danger": "Solid #b34d3e, #ffffff text (used for Stop Build)."
+    },
+    "cards": {
+      "default": "bg-white border border-[#cecac8] shadow-sm p-6"
+    },
+    "chat_input": {
+      "style": "Large, prominent text area placed centrally on home. bg-white, 1px border #cecac8, shadow-md, padding p-4. Uses IBM Plex Mono for placeholder text."
+    },
+    "preview_iframe": {
+      "style": "A 'browser window' component acting as the live preview. Top bar has bg-[#ece8e4] with 1px border-b #cecac8, containing a mock address bar showing the Tunnel URL, and a refresh icon."
+    }
+  },
+  "grids_and_layouts": {
+    "home": {
+      "structure": "Central focus. Huge greeting text (Cormorant Garamond text-5xl), followed by the chat input block (max-w-3xl mx-auto). Below that, a Bento Grid (grid-cols-1 md:grid-cols-3 gap-6) for previous projects."
+    },
+    "builder_view": {
+      "structure": "Strict h-screen layout. Top navigation (h-14). Below it, a flex/grid container: grid-cols-12. Left panel (col-span-5, 40%) for Chat and AI Agent Progress. Right panel (col-span-7, 60%) for the Live Preview and Logs.",
+      "left_panel": "Vertical flex, scrollable. Contains timeline (Manager -> Planner -> Coding -> Testing), chat bubbles (user right, AI left), and inline interactive cards (Implementation Plan approval, Q&A).",
+      "right_panel": "bg-[#ece8e4] p-4. Contains a large browser-like window for the iframe and a smaller toggleable bottom pane for Sandbox Build Logs."
+    },
+    "admin_dashboard": {
+      "structure": "Dense grid layout (grid-cols-1 lg:grid-cols-4 gap-8). Sidebar for navigation. Main area uses Shadcn tables for Data and Skills management. Tight spacing (gap-4) for data clarity."
+    }
+  },
+  "motion": {
+    "greeting": "Typewriter or gentle fade-in-up effect on the rotating greeting.",
+    "agent_progress": "Use a 'Tracing Beam' or pulsing border on the active agent in the timeline to indicate current execution status.",
+    "transitions": "Fast, crisp transitions (150ms ease-out) for hover states. No bouncy spring animations; keep it professional and architectural."
+  },
+  "accessibility": {
+    "contrast": "Ensure #1c1917 text on #f6f3f1 background meets AAA standards. Action buttons (#2a433d) with white text meet AA.",
+    "focus": "All interactive elements must use focus:ring-2 focus:ring-[#2a433d] focus:ring-offset-2 focus:ring-offset-[#f6f3f1]."
+  },
+  "media": {
+    "avatars": [
+      {
+        "url": "https://images.pexels.com/photos/6146051/pexels-photo-6146051.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Elegant bald man in black suit, used for Admin/User profile picture",
+        "category": "user_avatar"
+      },
+      {
+        "url": "https://images.pexels.com/photos/29995740/pexels-photo-29995740.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Confident young woman, alternative user avatar",
+        "category": "user_avatar"
+      }
+    ],
+    "abstract_graphics": [
+      {
+        "url": "https://images.unsplash.com/photo-1764209343170-75460c0b52bf?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2MzR8MHwxfHNlYXJjaHw0fHxhYnN0cmFjdCUyMGFyY2hpdGVjdHVyYWwlMjBza2V0Y2h8ZW58MHx8fHwxNzg4MTc0MDY3fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Modern abstract architectural lines, perfect for empty state backgrounds or login screen.",
+        "category": "empty_state"
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Use Shadcn UI for standard components (Tables, Dropdowns, Inputs, Dialogs) but strip out the default Vercel aesthetic. Override radii to be sharp (rounded-sm at most) and borders to be #cecac8.",
+    "Implement the left/right 40/60 builder split explicitly using Tailwind Grid (col-span-5 and col-span-7) on large screens.",
+    "Ensure the rotating greeting changes text via an array of phrases using a useEffect on mount.",
+    "The AI Agent timeline should look like a vertical stepper using Phosphor or Lucide icons.",
+    "For the Q&A and Implementation Plan cards in the chat, use a distinct background (e.g. white vs parchment) and clear 'Approve' or 'Request Changes' buttons.",
+    "The Admin dashboard must isolate data securely and provide clear CRUD UI for the markdown skills files.",
+    "All interactive elements must include a data-testid attribute in kebab-case."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "Avoid generic 'AI slop' design. Do not use standard centered, rounded, drop-shadowed SaaS layouts.",
+    "Embrace the 'Parchment' background. Do not apply full-screen gradients.",
+    "Use generous padding (p-6, p-8) to let the typography breathe.",
+    "Never apply 'transition: all'. Explicitly state transition properties.",
+    "Use Sonner for toast notifications.",
+    "Use Shadcn's components but aggressively style them to fit the earthy/architectural theme."
+  ]
+}

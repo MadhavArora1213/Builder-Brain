@@ -1,0 +1,78 @@
+{
+  "summary": "Full backend + frontend testing of Grizon AI. Created pytest suite (32 tests) covering health, auth (register/login/me/logout/JWT cookie+Bearer/negative cases), role protection (403/401 on all /api/admin/*), STRICT multi-user isolation, project CRUD, admin stats/tables/skills CRUD, and the fast message->manager->planner flow. 30/32 backend tests passed. Playwright covered login (invalid+valid), admin dashboard (Overview/Database/Skills incl. UI create+toggle+delete), UI registration + role gating of /admin, Home->Builder build flow (plan card rendered in ~24s with Approve & Build), preview pane + logs toggle, and cross-user isolation in the UI (User B redirected off User A's /builder/:id). One CRITICAL backend bug found: DELETE /api/projects/{id} returns 200 but never deletes the project document.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "DELETE /api/projects/{project_id}",
+        "issue": "Returns {\"ok\": true} but the project document is NEVER deleted. projects_router.delete_project loops collections and runs db[coll].delete_many({'project_id': project_id}) — the 'projects' collection stores the id under the field 'id', not 'project_id'. Verified via API (GET after DELETE still returns 200) and directly in MongoDB (all deleted test projects still present). Consequence: 'Delete project' in the UI appears to succeed (success toast) but the card reappears on reload; orphaned sandboxes/projects accumulate.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "POST /api/auth/login",
+        "issue": "No brute-force protection / account lockout. 6+ consecutive wrong passwords all return 401 with no lockout (expected 423/429 after 5 fails per auth playbook). No rate limiting or failed_attempts tracking anywhere in auth.py."
+      },
+      {
+        "endpoint": "POST /api/auth/register",
+        "issue": "Duplicate-email check runs before password length validation, so a weak-password signup on an existing email leaks 'Email already registered' (minor enumeration/ordering nit). Also email-validator rejects reserved TLDs (.test/.local) — tests must use real-looking domains."
+      },
+      {
+        "endpoint": "POST /api/projects/{id}/message",
+        "issue": "workflow.status is not set to 'planning' before the manager/planner LLM calls; it stays 'idle' for the whole 15-30s call, so the UI header badge shows IDLE and the Stop button is not offered while agents are actually working (see frontend issue)."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Home project card delete",
+        "issue": "Clicking delete shows 'Project deleted' toast but the project persists after reload (root cause = backend DELETE bug above). Frontend also shows a success toast for a no-op.",
+        "selector": "[data-testid^=\"delete-project-\"]",
+        "priority": "HIGH"
+      },
+      {
+        "component": "Builder header status badge / Stop button",
+        "issue": "During the manager+planner phase the badge shows 'IDLE' (backend keeps status idle) and no Stop button is available, even though 'Analyzing your request…' / 'Planning the implementation…' messages are streaming. Badge flips straight to AWAITING_APPROVAL.",
+        "selector": "header span",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Home / Admin Skills",
+        "issues": [
+          "Destructive actions use native window.confirm() for project delete and skill delete instead of a shadcn AlertDialog — inconsistent with the rest of the design system and blocks automated flows.",
+          "Admin Overview stat cards render an em dash placeholder with no skeleton/loading state; api.get('/admin/stats') errors are swallowed by .catch(() => {}) so a real failure is indistinguishable from loading (same pattern in DatabaseView and Skills load)."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "FIX CRITICAL: in projects_router.delete_project, delete the project itself with await db.projects.delete_one({'id': project_id, 'owner_id': user['id']}) and keep delete_many({'project_id': project_id}) only for the child collections.",
+    "Add brute-force lockout/rate limiting on POST /api/auth/login (e.g. failed_attempts + locked_until, return 423/429 after 5 failures).",
+    "Set workflow status to 'planning' (current_agent manager/planner) at the start of handle_user_message so the Builder badge/timeline/Stop reflect in-flight work.",
+    "Replace window.confirm with shadcn AlertDialog for project + skill deletion and surface API errors instead of swallowing them in .catch(() => {})."
+  ],
+  "critical_code_review_comments": [
+    "projects_router.py:88-91 — collection-agnostic delete loop is the source of the delete bug; the parent doc must be removed by its own key. Add a regression test after fixing.",
+    "Admin.jsx / Home.jsx / Builder.jsx use empty .catch(() => {}) in several data loads — no error state is ever shown to the user (violates error-state handling guideline).",
+    "orchestrator.py is 549 lines and mixes manager/planner/coding/testing prompts and the LangGraph loop; consider splitting per-agent modules (<700-line guideline is close).",
+    "server.py CORS falls back to allow_origins=['*'] with allow_credentials=True when FRONTEND_URL is unset — invalid combination for credentialed requests; fail fast on missing FRONTEND_URL instead (FRONTEND_URL is currently set, so no live impact)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (new)"
+  ],
+  "success_rate": {"backend": "94% (30/32 pytest)", "frontend": "90% (only project-delete + status-badge issues)"},
+  "seed_data_creation": "Created ~20 TEST_*@example.com users, several TEST_ projects and TEST_ skills via API/UI; all test users, their projects and TEST_ skills were cleaned up directly in MongoDB after the run (project cleanup had to be done in Mongo because the DELETE endpoint is broken). 4 seeded skills and admin user left intact.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "admin@grizon.ai / Grizon@2026 (works, role=admin). Normal users created on the fly via /api/auth/register with password Test@1234; note email domains with reserved TLDs (.test) are rejected by email-validator — use @example.com.",
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/backend_test.py -v (uses pytest.ini xdist config, ~31s; message->plan tests hit the real Sarvam LLM and take ~20-40s). Two known failures: TestProjects::test_create_list_get_delete (project delete bug) and TestAuth::test_brute_force_lockout (feature missing) — both should pass once fixed. Isolation, role protection, admin skills/tables and message->plan flow all verified green. /approve and /retry were NOT called per instructions (real sandbox build). Remember to clean TEST_ users/projects in Mongo since DELETE is broken.",
+  "rca_of_the_issue": "DELETE /api/projects/{id}: projects_router.py iterates ['projects','conversations','messages',...] and issues delete_many({'project_id': project_id}) on each. Only child collections carry a 'project_id' field; the projects document identifies itself with 'id'. So every child record is purged while the parent project row survives, and the endpoint still returns ok:true. Reproduction: POST /api/projects -> DELETE /api/projects/{id} (200) -> GET /api/projects/{id} returns 200 instead of 404; confirmed in MongoDB (10 projects present including all 'deleted' TEST_ ones). Fix: delete_one({'id': project_id, 'owner_id': user['id']}) on db.projects."
+}
