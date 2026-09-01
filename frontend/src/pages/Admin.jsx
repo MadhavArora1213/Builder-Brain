@@ -124,14 +124,22 @@ function Agents() {
     catch { toast.error("Failed to save"); } finally { setSaving(false); }
   };
   return (
-    <div data-testid="admin-agents" className="max-w-2xl">
-      <p className="font-mono text-xs text-ink/50 mb-4">Configure the model each agent uses. Models are read dynamically at run time — new executions use the latest value. Not hard-coded in the agents.</p>
+    <div data-testid="admin-agents" className="max-w-4xl">
+      <p className="font-mono text-xs text-ink/50 mb-4">Configure the model and provider each agent uses. Models are read dynamically at run time — new executions use the latest value. Not hard-coded in the agents.</p>
       <div className="bg-white border border-[#cecac8] rounded-sm divide-y divide-[#ece8e4]">
         {AGENT_LIST.map((a) => (
-          <div key={a.key} className="flex items-center justify-between px-4 py-3">
-            <span className="flex items-center gap-2 font-mono text-sm text-ink"><Bot className="w-4 h-4 text-gold" /> {a.label}</span>
-            <input data-testid={`model-${a.key}`} value={models[a.key] || ""} onChange={(e) => setModels({ ...models, [a.key]: e.target.value })}
-              className="bg-white border border-[#cecac8] rounded-sm px-3 py-1.5 text-sm font-mono w-48 focus:outline-none focus:ring-2 focus:ring-forest" />
+          <div key={a.key} className="flex items-center justify-between px-4 py-3 gap-4">
+            <span className="flex items-center gap-2 font-mono text-sm text-ink w-32"><Bot className="w-4 h-4 text-gold" /> {a.label}</span>
+            <select data-testid={`provider-${a.key}`} value={models[a.key]?.provider || "sarvam"} 
+              onChange={(e) => setModels({ ...models, [a.key]: { ...models[a.key], model: models[a.key]?.model || "", provider: e.target.value } })}
+              className="bg-white border border-[#cecac8] rounded-sm px-3 py-1.5 text-sm font-mono w-32 focus:outline-none focus:ring-2 focus:ring-forest">
+              <option value="sarvam">Sarvam</option>
+              <option value="openrouter">OpenRouter</option>
+            </select>
+            <input data-testid={`model-${a.key}`} value={models[a.key]?.model || ""} 
+              onChange={(e) => setModels({ ...models, [a.key]: { ...models[a.key], model: e.target.value, provider: models[a.key]?.provider || "sarvam" } })}
+              className="bg-white border border-[#cecac8] rounded-sm px-3 py-1.5 text-sm font-mono flex-1 focus:outline-none focus:ring-2 focus:ring-forest" 
+              placeholder="Model name" />
           </div>
         ))}
       </div>
@@ -147,6 +155,9 @@ const INTEG_FIELDS = [
   { key: "sarvam_model", label: "Sarvam Model", secret: false },
   { key: "sarvam_base_url", label: "Sarvam Base URL", secret: false },
   { key: "sarvam_api_key", label: "Sarvam API Key", secret: true },
+  { key: "openrouter_model", label: "OpenRouter Model", secret: false },
+  { key: "openrouter_base_url", label: "OpenRouter Base URL", secret: false },
+  { key: "openrouter_api_key", label: "OpenRouter API Key", secret: true },
   { key: "mcp_url", label: "NemoClaw MCP URL", secret: false },
   { key: "mcp_token", label: "NemoClaw MCP Token", secret: true },
 ];
@@ -162,7 +173,7 @@ function Integrations() {
   };
   return (
     <div data-testid="admin-integrations" className="max-w-2xl">
-      <p className="font-mono text-xs text-ink/50 mb-4">Sarvam LLM and NemoClaw sandbox credentials. Changes apply immediately to new agent runs and sandbox calls. Handle with care — these are secrets.</p>
+      <p className="font-mono text-xs text-ink/50 mb-4">LLM providers (Sarvam and OpenRouter) and NemoClaw sandbox credentials. Changes apply immediately to new agent runs and sandbox calls. Handle with care — these are secrets.</p>
       <div className="space-y-3">
         {INTEG_FIELDS.map((f) => (
           <div key={f.key}>

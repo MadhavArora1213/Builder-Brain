@@ -103,11 +103,14 @@ async def put_agent_models(body: AgentModelsBody, admin: dict = Depends(require_
     return {"models": await config.get_agent_models()}
 
 
-# ---- Integration credentials (Sarvam + NemoClaw MCP) ----
+# ---- Integration credentials (Sarvam + OpenRouter + NemoClaw MCP) ----
 class IntegrationsBody(BaseModel):
     sarvam_api_key: str | None = None
     sarvam_base_url: str | None = None
     sarvam_model: str | None = None
+    openrouter_api_key: str | None = None
+    openrouter_base_url: str | None = None
+    openrouter_model: str | None = None
     mcp_url: str | None = None
     mcp_token: str | None = None
 

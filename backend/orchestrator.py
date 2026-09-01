@@ -90,8 +90,8 @@ async def manager_classify(project, user_message, existing_summary, has_build):
     if existing_summary:
         ctx += f"Prior requirements: {existing_summary}\n"
     ctx += f"User message: {user_message}"
-    model = await config.get_agent_model("manager")
-    data, raw = await llm.chat_json(MANAGER_SYS, ctx, model=model)
+    model, provider = await config.get_agent_model("manager")
+    data, raw = await llm.chat_json(MANAGER_SYS, ctx, model=model, provider=provider)
     if not data:
         data = {"intent": "NEW", "needs_clarification": False,
                 "reply": "", "requirements_summary": user_message}
@@ -128,8 +128,8 @@ type is one of "choice" | "text" | "secret". If nothing needs asking, return nee
 
 async def question_agent(requirements, is_modify=False):
     prompt = f"{'MODIFICATION' if is_modify else 'NEW APP'} requirements:\n{requirements}"
-    model = await config.get_agent_model("question")
-    data, raw = await llm.chat_json(QUESTION_SYS, prompt, model=model)
+    model, provider = await config.get_agent_model("question")
+    data, raw = await llm.chat_json(QUESTION_SYS, prompt, model=model, provider=provider)
     if not data:
         return {"needs_clarification": False, "questions": []}
     return data
@@ -158,8 +158,8 @@ async def planner_run(requirements, existing_files_summary=""):
     prompt = f"Requirements:\n{requirements}\n"
     if existing_files_summary:
         prompt += f"\nExisting project files:\n{existing_files_summary}\nModify minimally."
-    model = await config.get_agent_model("planner")
-    data, raw = await llm.chat_json(PLANNER_SYS, prompt, model=model)
+    model, provider = await config.get_agent_model("planner")
+    data, raw = await llm.chat_json(PLANNER_SYS, prompt, model=model, provider=provider)
     if not data:
         data = {"goal": requirements, "architecture": {"frontend": "React/Vite", "backend": "Express"},
                 "technology": ["TypeScript", "React", "Tailwind CSS", "Express"],
@@ -414,8 +414,8 @@ async def coding_node(state: BState) -> BState:
     if skills:
         prompt += f"\n\nRELEVANT SKILLS:\n{skills[:6000]}"
 
-    model = await config.get_agent_model("coding")
-    raw = await llm.chat(CODING_SYS, prompt, temperature=0.2, max_tokens=28000, model=model)
+    model, provider = await config.get_agent_model("coding")
+    raw = await llm.chat(CODING_SYS, prompt, temperature=0.2, max_tokens=28000, model=model, provider=provider)
     data = parse_code_output(raw)
     await db.agent_executions.insert_one({
         "id": str(uuid.uuid4()), "project_id": state["project_id"], "user_id": state["owner_id"],
@@ -525,8 +525,8 @@ async def testing_node(state: BState) -> BState:
 
     prompt = (f"PLAN:\n{state['plan']}\n\nPreview URL present: {bool(state.get('tunnel_url'))}\n"
               f"Execution ok: {state.get('exec_ok')}\n\nSandbox logs:\n{state.get('logs','')[:5000]}")
-    model = await config.get_agent_model("testing")
-    data, raw = await llm.chat_json(TESTING_SYS, prompt, temperature=0.1, model=model)
+    model, provider = await config.get_agent_model("testing")
+    data, raw = await llm.chat_json(TESTING_SYS, prompt, temperature=0.1, model=model, provider=provider)
     if not data:
         data = {"status": "PASS" if state.get("tunnel_url") else "FAIL",
                 "tests": [{"name": "Preview available",

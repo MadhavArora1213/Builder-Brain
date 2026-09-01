@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowUp, Square, RotateCw, RefreshCw, Terminal, Globe, Loader2, Eye, Code2, FileCode2 } from "lucide-react";
+import { ArrowLeft, ArrowUp, Square, RotateCw, RefreshCw, Terminal, Globe, Loader2, Eye, Code2, FileCode2, ExternalLink } from "lucide-react";
 import api from "@/lib/api";
 import { ChatMessage, QuestionCard, PlanCard, AgentTimeline } from "@/components/builder/parts";
 
@@ -173,6 +173,7 @@ export default function Builder() {
                     <span data-testid="preview-url" className="font-mono text-[11px] text-ink/60 truncate">{project.preview_url || "waiting for sandbox…"}</span>
                   </div>
                   <button data-testid="refresh-preview-btn" onClick={refreshPreview} className="text-ink/50 hover:text-ink"><RefreshCw className="w-4 h-4" /></button>
+                  <button data-testid="open-preview-tab-btn" onClick={() => project.preview_url && window.open(project.preview_url, "_blank")} disabled={!project.preview_url} className="text-ink/50 hover:text-ink disabled:opacity-50 disabled:cursor-not-allowed"><ExternalLink className="w-4 h-4" /></button>
                   <button data-testid="toggle-logs-btn" onClick={loadLogs} className={`${showLogs ? "text-forest" : "text-ink/50"} hover:text-ink`}><Terminal className="w-4 h-4" /></button>
                 </>
               )}

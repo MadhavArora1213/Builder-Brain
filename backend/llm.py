@@ -4,13 +4,17 @@ from openai import AsyncOpenAI
 import config
 
 
-async def _client():
+async def _client(provider: str = "sarvam"):
+    """Get OpenAI-compatible client for Sarvam or OpenRouter"""
     integ = await config.get_integrations()
-    return AsyncOpenAI(api_key=integ["sarvam_api_key"], base_url=integ["sarvam_base_url"]), integ["sarvam_model"]
+    if provider == "openrouter":
+        return AsyncOpenAI(api_key=integ["openrouter_api_key"], base_url=integ["openrouter_base_url"]), integ["openrouter_model"]
+    else:  # sarvam
+        return AsyncOpenAI(api_key=integ["sarvam_api_key"], base_url=integ["sarvam_base_url"]), integ["sarvam_model"]
 
 
-async def chat(system: str, user: str, temperature: float = 0.3, max_tokens: int = 16000, model: str = None) -> str:
-    client, default_model = await _client()
+async def chat(system: str, user: str, temperature: float = 0.3, max_tokens: int = 16000, model: str = None, provider: str = "sarvam") -> str:
+    client, default_model = await _client(provider)
     resp = await client.chat.completions.create(
         model=model or default_model,
         temperature=temperature,
@@ -49,7 +53,7 @@ def extract_json(text: str):
     return None
 
 
-async def chat_json(system: str, user: str, temperature: float = 0.2, max_tokens: int = 16000, model: str = None):
+async def chat_json(system: str, user: str, temperature: float = 0.2, max_tokens: int = 16000, model: str = None, provider: str = "sarvam"):
     system = system + "\n\nYou MUST respond with ONLY valid JSON. No prose, no markdown fences."
-    raw = await chat(system, user, temperature, max_tokens, model)
+    raw = await chat(system, user, temperature, max_tokens, model, provider)
     return extract_json(raw), raw

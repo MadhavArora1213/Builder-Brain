@@ -13,6 +13,9 @@ async def get_integrations() -> dict:
         "sarvam_api_key": doc.get("sarvam_api_key") or os.environ.get("SARVAM_API_KEY", ""),
         "sarvam_base_url": doc.get("sarvam_base_url") or os.environ.get("SARVAM_BASE_URL", ""),
         "sarvam_model": doc.get("sarvam_model") or os.environ.get("SARVAM_MODEL", "glm5.2"),
+        "openrouter_api_key": doc.get("openrouter_api_key") or os.environ.get("OPENROUTER_API_KEY", ""),
+        "openrouter_base_url": doc.get("openrouter_base_url") or os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        "openrouter_model": doc.get("openrouter_model") or os.environ.get("OPENROUTER_MODEL", "meta-llama/llama-2-70b-chat"),
         "mcp_url": doc.get("mcp_url") or os.environ.get("SANDBOX_MCP_URL", ""),
         "mcp_token": doc.get("mcp_token") or os.environ.get("SANDBOX_MCP_TOKEN", ""),
     }
@@ -20,25 +23,49 @@ async def get_integrations() -> dict:
 
 async def update_integrations(fields: dict):
     clean = {k: v for k, v in fields.items()
-             if k in ("sarvam_api_key", "sarvam_base_url", "sarvam_model", "mcp_url", "mcp_token") and v is not None}
+             if k in ("sarvam_api_key", "sarvam_base_url", "sarvam_model", 
+                     "openrouter_api_key", "openrouter_base_url", "openrouter_model",
+                     "mcp_url", "mcp_token") and v is not None}
     await db.system_config.update_one({"key": "integrations"},
                                       {"$set": {"key": "integrations", **clean}}, upsert=True)
 
 
 async def get_agent_models() -> dict:
+    """Returns {agent: {model: "...", provider: "sarvam|openrouter"}}"""
     doc = await db.system_config.find_one({"key": "agent_models"}, {"_id": 0}) or {}
     integ = await get_integrations()
-    default = integ["sarvam_model"]
+    default_model = integ["sarvam_model"]
+    default_provider = "sarvam"
     models = doc.get("models", {})
-    return {a: models.get(a) or default for a in AGENTS}
+    
+    result = {}
+    for a in AGENTS:
+        agent_config = models.get(a, {})
+        if isinstance(agent_config, str):  # backward compatibility: old format was just model string
+            result[a] = {"model": agent_config, "provider": "sarvam"}
+        else:
+            result[a] = {
+                "model": agent_config.get("model") or default_model,
+                "provider": agent_config.get("provider") or default_provider
+            }
+    return result
 
 
-async def get_agent_model(agent: str) -> str:
+async def get_agent_model(agent: str) -> tuple[str, str]:
+    """Returns (model, provider) for an agent"""
     models = await get_agent_models()
-    return models.get(agent) or "glm5.2"
+    config = models.get(agent, {})
+    return config.get("model", "glm5.2"), config.get("provider", "sarvam")
 
 
 async def set_agent_models(models: dict):
-    clean = {a: models[a] for a in AGENTS if a in models and models[a]}
+    """models: {agent: {model: "...", provider: "sarvam|openrouter"}}"""
+    clean = {}
+    for a in AGENTS:
+        if a in models and models[a]:
+            clean[a] = {
+                "model": models[a].get("model") or "glm5.2",
+                "provider": models[a].get("provider") or "sarvam"
+            }
     await db.system_config.update_one({"key": "agent_models"},
                                       {"$set": {"key": "agent_models", "models": clean}}, upsert=True)
