@@ -183,36 +183,6 @@ async def login(body: LoginBody, response: Response):
     return {"user": public_user({"id": user.id, "email": user.email, "name": user.name, "role": user.role, "created_at": user.created_at.isoformat()}), "token": token}
 
 
-class GoogleBody(BaseModel):
-    session_id: str
-
-
-@router.post("/google")
-async def google_login(body: GoogleBody, response: Response):
-    async with httpx.AsyncClient(timeout=30) as http:
-        r = await http.get(
-            "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-            headers={"X-Session-ID": body.session_id},
-        )
-    if r.status_code != 200:
-        raise HTTPException(status_code=401, detail="Google auth failed")
-    data = r.json()
-    email = data["email"].lower()
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(select(User).filter(User.email == email))
-        user = result.scalars().first()
-    if not user:
-        user = await _create_user(email, data.get("name", ""), password=None,
-                                  picture=data.get("picture", ""))
-    else:
-        user = {"id": user.id, "email": user.email, "name": user.name or "",
-                "role": user.role, "created_at": user.created_at.isoformat()}
-    token = create_access_token(user["id"], email)
-    set_auth_cookie(response, token)
-    await audit(user["id"], "google_login", {"email": email})
-    return {"user": public_user(user), "token": token}
-
-
 @router.get("/me")
 async def me(user: dict = Depends(get_current_user)):
     return public_user(user)

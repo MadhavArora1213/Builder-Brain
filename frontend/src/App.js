@@ -4,7 +4,6 @@ import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import Login from "@/pages/Login";
-import AuthCallback from "@/pages/AuthCallback";
 import Home from "@/pages/Home";
 import Builder from "@/pages/Builder";
 import Admin from "@/pages/Admin";
@@ -20,8 +19,6 @@ function Protected({ children, admin }) {
 }
 
 function Router() {
-  const location = useLocation();
-  if (location.hash?.includes("session_id=")) return <AuthCallback />;
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
