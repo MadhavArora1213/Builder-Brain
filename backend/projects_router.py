@@ -1,6 +1,10 @@
+import io
+import re
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.orm import joinedload
@@ -151,6 +155,35 @@ async def get_files(project_id: str, user: dict = Depends(get_current_user)):
         }
         for f in files
     ]
+
+
+@router.get("/{project_id}/download")
+async def download_project_zip(project_id: str, user: dict = Depends(get_current_user)):
+    project = await owned_project(project_id, user)
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(ProjectFile).filter(ProjectFile.project_id == project_id)
+        )
+        files = result.scalars().all()
+
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for file in files:
+            safe_path = (file.path or "").lstrip("/")
+            if not safe_path:
+                continue
+            zf.writestr(safe_path, file.content or "")
+
+    archive.seek(0)
+    raw_title = (project.get('title') or 'project').strip() or 'project'
+    safe_title = re.sub(r'[\\/:*?"<>|]', '_', raw_title)
+    filename = f"{safe_title}.zip"
+    return StreamingResponse(
+        iter([archive.getvalue()]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
 
 @router.delete("/{project_id}")

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowUp, Square, RotateCw, RefreshCw, Terminal, Globe, Loader2, Eye, Code2, FileCode2, ExternalLink } from "lucide-react";
+import { ArrowLeft, ArrowUp, Square, RotateCw, RefreshCw, Terminal, Globe, Loader2, Eye, Code2, FileCode2, ExternalLink, Download } from "lucide-react";
 import api from "@/lib/api";
 import { ChatMessage, QuestionCard, PlanCard, AgentTimeline } from "@/components/builder/parts";
 
@@ -34,6 +34,7 @@ export default function Builder() {
   const [rightTab, setRightTab] = useState("preview");
   const [selectedFile, setSelectedFile] = useState(null);
   const [publishing, setPublishing] = useState(false);
+  const [githubSetupNotice, setGithubSetupNotice] = useState(false);
   const firstSent = useRef(false);
   const scrollRef = useRef(null);
   const atBottom = useRef(true);
@@ -120,16 +121,50 @@ export default function Builder() {
   const retry = async () => { try { await api.post(`/projects/${projectId}/retry`); toast.success("Retrying…"); fetchAll(); } catch {} };
   const refreshPreview = async () => { setPreviewKey((k) => k + 1); try { await api.get(`/projects/${projectId}/sandbox-status`); fetchAll(); } catch {} };
   const loadLogs = async () => { setShowLogs((s) => !s); try { const { data } = await api.get(`/projects/${projectId}/logs`); setLogs(data.logs || ""); } catch {} };
+  const redirectToGithubSettings = (event) => {
+    if (event) event.preventDefault();
+    setGithubSetupNotice(false);
+    window.location.href = "/settings";
+  };
+
   const publishToGithub = async () => {
+    setGithubSetupNotice(false);
     setPublishing(true);
     try {
       const { data } = await api.post(`/github/projects/${projectId}/publish`);
       toast.success(`Published to ${data.repository}`);
+      setGithubSetupNotice(false);
       await fetchAll();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "GitHub publish failed");
+      const detail = err.response?.data?.detail || "GitHub publish failed";
+      const needsGithubSetup = /GitHub.*(not connected|not configured|not selected|Connect GitHub|repository.*selected|Authorize GitHub)/i.test(detail);
+
+      if (needsGithubSetup) {
+        setGithubSetupNotice(true);
+      } else {
+        toast.error(detail);
+      }
     } finally {
       setPublishing(false);
+    }
+  };
+
+  const downloadProjectZip = async () => {
+    try {
+      const { data } = await api.get(`/projects/${projectId}/download`, { responseType: "blob" });
+      const blob = new Blob([data], { type: "application/zip" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const safeTitle = ((project?.title || "project").trim().replace(/\s+/g, "-") || "project").replace(/[\\/:*?"<>|]/g, "_");
+      link.href = url;
+      link.download = `${safeTitle}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      toast.success("Project zip downloaded");
+    } catch {
+      toast.error("Failed to download project zip");
     }
   };
 
@@ -177,6 +212,13 @@ export default function Builder() {
              className="font-mono text-[10px] border rounded-sm px-2 py-1 disabled:opacity-50"
              style={{ borderColor: "var(--border)", color: "var(--forest)" }}>
              {publishing ? "Publishing…" : "Publish to GitHub"}
+           </button>
+          )}
+          {(status === "complete" || files.length > 0) && (
+           <button onClick={downloadProjectZip}
+             className="flex items-center gap-1.5 border rounded-sm px-2 py-1 text-[10px] font-mono hover:opacity-80"
+             style={{ borderColor: "var(--border)", color: "var(--forest)" }}>
+             <Download className="w-3.5 h-3.5" /> Download ZIP
            </button>
           )}
         </div>
@@ -316,6 +358,23 @@ export default function Builder() {
           </div>
         </section>
       </div>
+
+      {githubSetupNotice && (
+        <div className="fixed bottom-4 left-0 right-0 px-4 z-50">
+          <div className="mx-auto max-w-4xl rounded-sm border border-red-200 px-4 py-3 text-left shadow-sm"
+            style={{ backgroundColor: "#fce4e4", borderColor: "#f4b5b5" }}>
+            <a
+              href="/settings"
+              onClick={redirectToGithubSettings}
+              className="flex items-center gap-3 text-base font-medium transition-opacity hover:opacity-80"
+              style={{ color: "#a11c1c" }}
+            >
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-xs text-white">!</span>
+              <span>Connect GitHub to enable publishing</span>
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
