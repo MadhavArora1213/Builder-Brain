@@ -287,8 +287,10 @@ async def disconnect(user: dict = Depends(get_current_user)):
 
 async def publish_project(project_id: str, owner_id: str) -> dict:
     item = await _connection(owner_id)
-    if not item or not item.repository:
-        return {"status": "skipped", "reason": "GitHub repository is not configured"}
+    if not item:
+        return {"status": "skipped", "reason": "Connect GitHub to enable publishing"}
+    if not item.repository:
+        return {"status": "skipped", "reason": "Connect GitHub to enable publishing"}
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(ProjectFile).filter(ProjectFile.project_id == project_id))
         files = result.scalars().all()

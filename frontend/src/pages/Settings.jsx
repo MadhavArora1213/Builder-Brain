@@ -211,6 +211,11 @@ export default function Settings() {
               </button>
             ) : (
               <div className="space-y-4">
+                {!github.repository && (
+                  <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
+                    Select a repository to enable publishing
+                  </p>
+                )}
                 <p className="font-mono text-sm" style={{ color: "var(--foreground)" }}>
                   Connected as <strong>{github.account_login}</strong>
                 </p>
