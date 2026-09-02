@@ -102,6 +102,16 @@ export default function Builder() {
     finally { setSending(false); }
   }
 
+  const handleRequestChanges = async (changesText) => {
+    setSending(true);
+    try {
+      await api.post(`/projects/${projectId}/request-changes`, { content: changesText });
+      toast.success("Changes requested — planner is regenerating the plan…");
+      await fetchAll();
+    } catch { toast.error("Failed to request changes"); }
+    finally { setSending(false); }
+  };
+
   const send = async () => {
     if (!input.trim()) return;
     const c = input.trim();
@@ -189,7 +199,7 @@ export default function Builder() {
           <AgentTimeline status={status} />
           <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto p-4 space-y-3" data-testid="conversation-scroll">
             {messages.map((m) => {
-              if (m.type === "plan") return <PlanCard key={m.id} data={m.data} busy={status !== "awaiting_approval"} onApprove={approve} onRequestChanges={() => inputRef.current?.focus()} />;
+              if (m.type === "plan") return <PlanCard key={m.id} data={m.data} busy={status !== "awaiting_approval"} onApprove={approve} onRequestChanges={handleRequestChanges} />;
               if (m.type === "questions") return <QuestionCard key={m.id} data={m.data} locked={status !== "asking"} onSubmit={submitAnswers} />;
               return <ChatMessage key={m.id} m={m} onOpenFile={openFile} />;
             })}

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { toast } from "sonner";
-import { Check, HelpCircle, ClipboardList, Bot, Wrench, TestTube2, Compass, FileText, FileCode2 } from "lucide-react";
+import { Check, HelpCircle, ClipboardList, Bot, Wrench, TestTube2, Compass, FileText, FileCode2, X } from "lucide-react";
 
 const AGENT_META = {
   manager: { icon: Compass, label: "Manager", colorVar: "var(--forest)" },
@@ -164,41 +164,112 @@ export function QuestionCard({ data, onSubmit, locked }) {
 export function PlanCard({ data, onApprove, onRequestChanges, busy }) {
   const plan = data?.plan || {};
   const todo = data?.todo || [];
+  const [showChangesModal, setShowChangesModal] = useState(false);
+  const [changesText, setChangesText] = useState("");
+  const [submittingChanges, setSubmittingChanges] = useState(false);
+
+  const handleRequestChanges = async () => {
+    if (!changesText.trim()) {
+      toast.error("Please describe the changes you want");
+      return;
+    }
+    setSubmittingChanges(true);
+    const text = changesText.trim();
+    setShowChangesModal(false);
+    setChangesText("");
+    try {
+      await onRequestChanges(text);
+    } catch {
+      toast.error("Failed to request changes");
+    } finally {
+      setSubmittingChanges(false);
+    }
+  };
+
   return (
-    <div className="border rounded-sm p-4 animate-fade-up" data-testid="plan-card"
-      style={{ backgroundColor: "var(--card)", borderColor: "color-mix(in srgb, var(--forest) 30%, var(--border))" }}>
-      <div className="flex items-center gap-2 mb-1 font-mono text-xs uppercase tracking-wide" style={{ color: "var(--forest)" }}>
-        <ClipboardList className="w-4 h-4" /> Implementation Plan
-      </div>
-      <h3 className="font-heading text-xl mb-1" style={{ color: "var(--ink)" }}>{plan.goal}</h3>
-      {plan.technology?.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 my-2">
-          {plan.technology.map((t, i) => (
-            <span key={i} className="font-mono text-[10px] px-2 py-0.5 rounded-sm"
-              style={{ backgroundColor: "var(--sand)", color: "var(--foreground)" }}>{t}</span>
+    <>
+      <div className="border rounded-sm p-4 animate-fade-up" data-testid="plan-card"
+        style={{ backgroundColor: "var(--card)", borderColor: "color-mix(in srgb, var(--forest) 30%, var(--border))" }}>
+        <div className="flex items-center gap-2 mb-1 font-mono text-xs uppercase tracking-wide" style={{ color: "var(--forest)" }}>
+          <ClipboardList className="w-4 h-4" /> Implementation Plan
+        </div>
+        <h3 className="font-heading text-xl mb-1" style={{ color: "var(--ink)" }}>{plan.goal}</h3>
+        {plan.technology?.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 my-2">
+            {plan.technology.map((t, i) => (
+              <span key={i} className="font-mono text-[10px] px-2 py-0.5 rounded-sm"
+                style={{ backgroundColor: "var(--sand)", color: "var(--foreground)" }}>{t}</span>
+            ))}
+          </div>
+        )}
+        <ul className="space-y-1.5 my-3">
+          {todo.map((t, i) => (
+            <li key={i} className="flex items-start gap-2 text-sm" style={{ color: "var(--foreground)" }}>
+              <Check className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--moss)" }} /> <span>{t.title}</span>
+            </li>
           ))}
+        </ul>
+        {data?.auto ? (
+          <p className="font-mono text-[11px]" style={{ color: "var(--muted-foreground)" }}>Auto-approved modification — building now.</p>
+        ) : (
+          <div className="flex gap-2 mt-3">
+            <button data-testid="approve-build-btn" onClick={onApprove} disabled={busy}
+              className="text-white rounded-sm px-4 py-2 text-sm font-medium transition-transform hover:-translate-y-px disabled:opacity-50"
+              style={{ backgroundColor: "var(--forest)" }}>Approve & Build</button>
+            <button data-testid="request-changes-btn" onClick={() => setShowChangesModal(true)} disabled={busy}
+              className="border rounded-sm px-4 py-2 text-sm transition-colors hover:opacity-80"
+              style={{ borderColor: "var(--border)", color: "var(--foreground)" }}>Request Changes</button>
+          </div>
+        )}
+      </div>
+
+      {showChangesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid="request-changes-modal">
+          <div className="absolute inset-0 bg-black/50" onClick={() => !submittingChanges && setShowChangesModal(false)} />
+          <div className="relative border rounded-sm shadow-lg w-full max-w-lg mx-4 p-0"
+            style={{ backgroundColor: "#ffffff", borderColor: "var(--border)" }}>
+            <div className="flex items-center justify-between px-4 py-3 border-b"
+              style={{ borderColor: "var(--border)", backgroundColor: "#ffffff" }}>
+              <h3 className="font-heading text-lg" style={{ color: "var(--ink)" }}>Request Changes</h3>
+              <button onClick={() => !submittingChanges && setShowChangesModal(false)}
+                style={{ color: "var(--muted-foreground)" }} className="hover:opacity-70">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4" style={{ backgroundColor: "#ffffff" }}>
+              <p className="text-sm mb-3" style={{ color: "var(--muted-foreground)" }}>
+                Describe what you'd like to change in the plan. The planner will regenerate a new plan based on your feedback.
+              </p>
+              <textarea
+                data-testid="changes-input"
+                value={changesText}
+                onChange={(e) => setChangesText(e.target.value)}
+                placeholder="e.g. Add user authentication, change the color scheme to dark mode, use PostgreSQL instead of SQLite..."
+                rows={5}
+                className="w-full border rounded-sm px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:ring-2"
+                style={{ backgroundColor: "#fff", borderColor: "var(--border)", color: "var(--ink)" }}
+              />
+              <div className="flex justify-end gap-2 mt-4">
+                <button onClick={() => !submittingChanges && setShowChangesModal(false)}
+                  disabled={submittingChanges}
+                  className="border rounded-sm px-4 py-2 text-sm transition-colors hover:opacity-80 disabled:opacity-50"
+                  style={{ borderColor: "var(--border)", color: "var(--foreground)" }}>
+                  Cancel
+                </button>
+                <button
+                  data-testid="submit-changes-btn"
+                  onClick={handleRequestChanges}
+                  disabled={submittingChanges || !changesText.trim()}
+                  className="text-white rounded-sm px-4 py-2 text-sm font-medium transition-transform hover:-translate-y-px disabled:opacity-50"
+                  style={{ backgroundColor: "var(--forest)" }}>
+                  {submittingChanges ? "Submitting…" : "Submit Changes"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
-      <ul className="space-y-1.5 my-3">
-        {todo.map((t, i) => (
-          <li key={i} className="flex items-start gap-2 text-sm" style={{ color: "var(--foreground)" }}>
-            <Check className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--moss)" }} /> <span>{t.title}</span>
-          </li>
-        ))}
-      </ul>
-      {data?.auto ? (
-        <p className="font-mono text-[11px]" style={{ color: "var(--muted-foreground)" }}>Auto-approved modification — building now.</p>
-      ) : (
-        <div className="flex gap-2 mt-3">
-          <button data-testid="approve-build-btn" onClick={onApprove} disabled={busy}
-            className="text-white rounded-sm px-4 py-2 text-sm font-medium transition-transform hover:-translate-y-px disabled:opacity-50"
-            style={{ backgroundColor: "var(--forest)" }}>Approve & Build</button>
-          <button data-testid="request-changes-btn" onClick={onRequestChanges} disabled={busy}
-            className="border rounded-sm px-4 py-2 text-sm transition-colors hover:opacity-80"
-            style={{ borderColor: "var(--border)", color: "var(--foreground)" }}>Request Changes</button>
-        </div>
-      )}
-    </div>
+    </>
   );
 }
 

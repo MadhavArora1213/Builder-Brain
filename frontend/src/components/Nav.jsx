@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Hammer, LogOut, Shield, Settings } from "lucide-react";
+import { LogOut, Shield, Settings } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 export default function Nav() {
@@ -10,7 +10,7 @@ export default function Nav() {
     <header className="h-14 border-b backdrop-blur flex items-center justify-between px-6 sticky top-0 z-30"
       style={{ borderColor: "var(--border)", backgroundColor: "color-mix(in srgb, var(--parchment) 80%, transparent)" }}>
       <Link to="/" data-testid="nav-logo" className="flex items-center gap-2 font-heading text-xl" style={{ color: "var(--ink)" }}>
-        <Hammer className="w-5 h-5" style={{ color: "var(--forest)" }} /> Grizon AI
+        <img src="/Logo.svg" alt="Grizon AI" className="w-8 h-8" /> Grizon AI
       </Link>
       <div className="flex items-center gap-3">
         {user?.role === "admin" && (

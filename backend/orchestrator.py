@@ -426,7 +426,18 @@ def parse_code_output(raw: str) -> dict:
     sm = re.search(r"SUMMARY:\s*(.+)", raw)
     files = []
     for m in re.finditer(r"===GRIZON_FILE:\s*(.+?)\s*===\s*\n(.*?)\n===GRIZON_END===", raw, re.DOTALL):
-        files.append({"path": m.group(1).strip(), "content": m.group(2)})
+        raw_path = m.group(1).strip()
+        content = m.group(2)
+        # If path contains newlines, the LLM put content in the path field.
+        # Take only the first line as path, rest as content.
+        if "\n" in raw_path:
+            lines = raw_path.split("\n", 1)
+            raw_path = lines[0].strip()
+            content = lines[1] + content
+        # Truncate very long paths (likely garbage)
+        if len(raw_path) > 200:
+            raw_path = raw_path[:200]
+        files.append({"path": raw_path, "content": content})
     return {
         "framework": fw.group(1) if fw else "vite-express",
         "entrypoint": ep.group(1) if ep else "frontend/src/main.tsx",
@@ -523,7 +534,7 @@ async def coding_node(state: BState) -> BState:
 
     for f in files:
         path, code = f.get("path"), f.get("content", "")
-        if not path:
+        if not path or len(path) > 200 or "\n" in path:
             continue
         # stream which file is being written (clickable in the UI)
         await add_message(project, "agent", "file", path, agent="coding", data={"path": path})
