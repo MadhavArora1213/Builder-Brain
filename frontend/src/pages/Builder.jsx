@@ -215,7 +215,11 @@ export default function Builder() {
             </button>
           )}
           {status === "complete" && project.workflow?.github?.status === "published" && (
-           <span className="font-mono text-[10px]" style={{ color: "var(--moss)" }}>Published to GitHub</span>
+           <button onClick={publishToGithub} disabled={publishing}
+             className="font-mono text-[10px] border rounded-sm px-2 py-1 disabled:opacity-50"
+             style={{ borderColor: "var(--border)", color: "var(--moss)" }}>
+             {publishing ? "Publishing…" : "Publish to GitHub"}
+           </button>
           )}
           {status === "complete" && project.workflow?.github?.status !== "published" && (
            <button onClick={publishToGithub} disabled={publishing}

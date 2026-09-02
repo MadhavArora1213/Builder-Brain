@@ -1,11 +1,12 @@
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { LogOut, Shield, Settings } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 export default function Nav() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   return (
     <header className="h-14 border-b backdrop-blur flex items-center justify-between px-6 sticky top-0 z-30"
       style={{ borderColor: "var(--border)", backgroundColor: "color-mix(in srgb, var(--parchment) 80%, transparent)" }}>
@@ -19,7 +20,7 @@ export default function Nav() {
             <Shield className="w-4 h-4" /> Admin
           </button>
         )}
-        <button data-testid="nav-settings-btn" onClick={()=>navigate("/settings")}
+        <button data-testid="nav-settings-btn" onClick={()=>navigate("/settings", { state: { returnTo: location.pathname } })}
           className="flex items-center gap-1.5 text-sm font-mono hover:underline" style={{ color: "var(--muted-foreground)" }}>
           <Settings className="w-4 h-4" /> Settings
         </button>

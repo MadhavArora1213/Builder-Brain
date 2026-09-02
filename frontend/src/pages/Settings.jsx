@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, Check, Sun, Moon, Github, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "@/lib/api";
@@ -61,12 +61,19 @@ export default function Settings() {
   const { user } = useAuth();
   const { themeId, setTheme } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const [github, setGithub] = useState(null);
   const [repositories, setRepositories] = useState([]);
   const [repository, setRepository] = useState("");
   const [branch, setBranch] = useState("main");
   const [githubBusy, setGithubBusy] = useState(false);
   const [newRepoName, setNewRepoName] = useState("");
+
+  const returnTo = location.state?.returnTo || sessionStorage.getItem("settings-return-path") || "/";
+
+  useEffect(() => {
+    sessionStorage.setItem("settings-return-path", returnTo);
+  }, [returnTo]);
 
   const loadGithub = async () => {
     try {
@@ -85,9 +92,15 @@ export default function Settings() {
 
   useEffect(() => { loadGithub(); }, []);
 
+  const handleBack = () => {
+    const target = location.state?.returnTo || sessionStorage.getItem("settings-return-path") || "/";
+    navigate(target === "/settings" ? "/" : target, { replace: false });
+  };
+
   const connectGithub = async () => {
     setGithubBusy(true);
     try {
+      sessionStorage.setItem("settings-return-path", returnTo);
       const { data } = await api.get("/github/connect");
       window.location.href = data.url;
     } catch (err) {
@@ -99,6 +112,7 @@ export default function Settings() {
   const authorizeGithub = async () => {
     setGithubBusy(true);
     try {
+      sessionStorage.setItem("settings-return-path", returnTo);
       const { data } = await api.get("/github/oauth/connect");
       window.location.href = data.url;
     } catch (err) {
@@ -156,7 +170,7 @@ export default function Settings() {
       <Nav />
       <main className="max-w-4xl mx-auto px-6 py-10">
         <button
-          onClick={() => navigate(-1)}
+          onClick={handleBack}
           className="flex items-center gap-2 text-sm font-mono mb-8 hover:opacity-70 transition-opacity"
           style={{ color: "var(--muted-foreground, var(--ink))" }}
         >
