@@ -249,6 +249,7 @@ async def list_models(provider: str, admin: dict = Depends(require_admin)):
                     pass
             return {"models": [
                 {"id": "glm5.2", "name": "GLM 5.2", "context_length": 32000},
+                {"id": "gemma4", "name": "Gemma 4 31B", "context_length": 32000},
             ]}
         else:
             raise HTTPException(status_code=400, detail="Unknown provider")
