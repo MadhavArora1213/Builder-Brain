@@ -111,8 +111,11 @@ async def connect(request: Request, user: dict = Depends(get_current_user)):
 
 
 @router.get("/callback")
-async def callback(state: str = Query(...), installation_id: str = Query(...)):
-    user_id = _state_user(state)
+async def callback(state: str = Query(None), installation_id: str = Query(...)):
+    if state:
+        user_id = _state_user(state)
+    else:
+        raise HTTPException(status_code=400, detail="GitHub installation complete, but no session found. Please connect from the app first.")
     app_installation = await _github_request(
         "GET", f"{GITHUB_API}/app/installations/{installation_id}", token=_app_jwt())
     account = app_installation.get("account") or {}
