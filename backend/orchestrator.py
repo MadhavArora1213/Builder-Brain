@@ -333,7 +333,7 @@ def parse_code_output(raw: str) -> dict:
     ep = re.search(r"ENTRYPOINT:\s*([^\s]+)", raw)
     sm = re.search(r"SUMMARY:\s*(.+)", raw)
     files = []
-    for m in re.finditer(r"===GRIZON_FILE:\s*(.+?)\s*===\s*\n(.*?)\n===GRIZON_END===", raw, re.DOTALL):
+    for m in re.finditer(r"===GRIZON_FILE:\s*(.+?)\s*===\s*\n(.*?)\s*\n?\s*===GRIZON_END===", raw, re.DOTALL):
         raw_path = m.group(1).strip()
         content = m.group(2)
         # If path contains newlines, the LLM put content in the path field.
@@ -462,7 +462,7 @@ async def coding_node(state: BState) -> BState:
                 summary = sm_match.group(1).strip()
         
         # Detect completed files in real-time
-        completed = re.findall(r"===GRIZON_FILE:\s*(.+?)===\s*\n(.*?)\n===GRIZON_END===", full_output, re.DOTALL)
+        completed = re.findall(r"===GRIZON_FILE:\s*(.+?)===\s*\n(.*?)\s*\n?\s*===GRIZON_END===", full_output, re.DOTALL)
         for path, content in completed:
             path = path.strip().lstrip("./").replace("\\", "/")
             if "\n" in path:

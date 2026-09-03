@@ -42,7 +42,7 @@ async def chat_stream(system: str, user: str, temperature: float = 0.3, max_toke
         ],
     )
     async for chunk in stream:
-        if chunk.choices[0].delta.content:
+        if chunk.choices and chunk.choices[0].delta.content:
             yield chunk.choices[0].delta.content
 
 
