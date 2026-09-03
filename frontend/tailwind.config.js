@@ -84,8 +84,8 @@ module.exports = {
         'accordion-up': 'accordion-up 0.2s ease-out'
       },
       fontFamily: {
-        heading: ['Cormorant Garamond', 'serif'],
-        mono: ['IBM Plex Mono', 'monospace'],
+        heading: ['Inter', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
         sans: ['Inter', 'sans-serif'],
       }
     }

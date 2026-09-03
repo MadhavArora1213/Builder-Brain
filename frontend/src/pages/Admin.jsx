@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Database, BookText, Users, FolderGit2, MessageSquare, Cpu, Plus, Trash2, Edit3, X, Bot, KeyRound, Save, LayoutDashboard, Settings, ChevronRight } from "lucide-react";
+import { Database, BookText, Users, FolderGit2, MessageSquare, Cpu, Plus, Trash2, Edit3, X, Bot, KeyRound, Save, LayoutDashboard, Settings, ChevronRight, ArrowLeft, LogOut } from "lucide-react";
 import api from "@/lib/api";
-import Nav from "@/components/Nav";
+import { useAuth } from "@/context/AuthContext";
 
 const SIDEBAR_ITEMS = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
@@ -13,54 +14,81 @@ const SIDEBAR_ITEMS = [
 ];
 
 export default function Admin() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [tab, setTab] = useState("overview");
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: "var(--parchment)", color: "var(--ink)" }}>
-      <Nav />
-      <div className="flex flex-1 min-h-0">
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-6 py-4 shrink-0">
+        <button onClick={() => navigate("/")}
+          className="flex h-9 w-9 items-center justify-center rounded-xl transition-all hover:-translate-y-0.5 hover:shadow-md"
+          style={{ backgroundColor: "color-mix(in srgb, var(--gold) 10%, transparent)", color: "var(--gold)" }}>
+          <ArrowLeft className="w-4 h-4" />
+        </button>
+        <div className="flex items-center gap-3">
+          <span className="text-[13px] hidden sm:inline" style={{ color: "var(--muted-foreground)" }}>{user?.email}</span>
+          <button onClick={logout}
+            className="flex items-center gap-1.5 text-[13px] font-medium rounded-full px-3 py-1.5 transition-all hover:-translate-y-0.5"
+            style={{ backgroundColor: "color-mix(in srgb, var(--danger) 10%, transparent)", color: "var(--danger)" }}>
+            <LogOut className="w-3.5 h-3.5" /> Logout
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-1 min-h-0 px-6 pb-6 gap-6">
         {/* Sidebar */}
-        <aside className="w-64 shrink-0 border-r flex flex-col"
-          style={{ borderColor: "var(--border)", backgroundColor: "var(--card)" }}>
-          <div className="px-5 py-5 border-b" style={{ borderColor: "var(--border)" }}>
-            <h2 className="font-heading text-xl" style={{ color: "var(--ink)" }}>Admin Panel</h2>
-            <p className="font-mono text-[11px] mt-1" style={{ color: "var(--muted-foreground)" }}>System management</p>
+        <aside className="w-56 shrink-0 rounded-2xl flex flex-col p-3"
+          style={{ backgroundColor: "color-mix(in srgb, var(--card) 70%, transparent)", boxShadow: "0 2px 16px rgba(0,0,0,0.05)" }}>
+          <div className="px-3 py-4 mb-2">
+            <h2 className="text-base font-bold" style={{ color: "var(--ink)" }}>Admin Panel</h2>
+            <p className="text-[11px] mt-0.5" style={{ color: "var(--muted-foreground)" }}>System management</p>
           </div>
-          <nav className="flex-1 p-3 space-y-1">
+          <nav className="flex-1 space-y-0.5">
             {SIDEBAR_ITEMS.map((item) => {
               const Icon = item.icon;
               const active = tab === item.key;
               return (
                 <button key={item.key} data-testid={`admin-tab-${item.key}`} onClick={() => setTab(item.key)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-sm font-mono text-sm transition-all group"
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all"
                   style={active
-                    ? { backgroundColor: "var(--forest)", color: "white" }
+                    ? { backgroundColor: "var(--gold)", color: "white", boxShadow: "0 2px 10px color-mix(in srgb, var(--gold) 30%, transparent)" }
                     : { color: "var(--muted-foreground)" }}>
                   <Icon className="w-4 h-4 shrink-0" />
                   <span className="flex-1 text-left">{item.label}</span>
-                  <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-60 transition-opacity" />
+                  {active && <ChevronRight className="w-3.5 h-3.5" />}
                 </button>
               );
             })}
           </nav>
-          <div className="p-4 border-t" style={{ borderColor: "var(--border)" }}>
-            <p className="font-mono text-[10px]" style={{ color: "var(--muted-foreground)" }}>Grizon AI v1.0</p>
+          <div className="px-3 py-3 mt-auto">
+            <p className="text-[10px]" style={{ color: "var(--muted-foreground)" }}>Grizon AI v1.0</p>
           </div>
         </aside>
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto p-8">
-          <div className="max-w-5xl">
-            <div className="mb-6">
-              <h1 className="font-heading text-3xl" style={{ color: "var(--ink)" }}>
+        <main className="flex-1 overflow-y-auto flex flex-col">
+          <div className="max-w-5xl flex-1 flex flex-col">
+            <div className="mb-8">
+              <h1 className="text-3xl font-bold" style={{ color: "var(--ink)" }}>
                 {SIDEBAR_ITEMS.find((i) => i.key === tab)?.label}
               </h1>
+              <p className="text-[13px] mt-1" style={{ color: "var(--muted-foreground)" }}>
+                {tab === "overview" && "System statistics and overview"}
+                {tab === "database" && "Browse and manage database tables"}
+                {tab === "skills" && "Manage agent skill files"}
+                {tab === "agents" && "Configure AI agent models"}
+                {tab === "integrations" && "Manage API keys and integrations"}
+              </p>
             </div>
-            {tab === "overview" && <Overview />}
-            {tab === "database" && <DatabaseView />}
-            {tab === "skills" && <Skills />}
-            {tab === "agents" && <Agents />}
-            {tab === "integrations" && <Integrations />}
+            <div className="flex-1 flex flex-col">
+              {tab === "overview" && <Overview />}
+              {tab === "database" && <DatabaseView />}
+              {tab === "skills" && <Skills />}
+              {tab === "agents" && <Agents />}
+              {tab === "integrations" && <Integrations />}
+            </div>
           </div>
         </main>
       </div>
@@ -72,19 +100,22 @@ function Overview() {
   const [stats, setStats] = useState(null);
   useEffect(() => { api.get("/admin/stats").then((r) => setStats(r.data)).catch(() => {}); }, []);
   const cards = [
-    { label: "Users", value: stats?.users, icon: Users },
-    { label: "Projects", value: stats?.projects, icon: FolderGit2 },
-    { label: "Messages", value: stats?.messages, icon: MessageSquare },
-    { label: "Builds", value: stats?.builds, icon: Cpu },
+    { label: "Users", value: stats?.users, icon: Users, gradient: "linear-gradient(135deg, color-mix(in srgb, var(--gold) 15%, transparent), color-mix(in srgb, var(--gold) 5%, transparent))" },
+    { label: "Projects", value: stats?.projects, icon: FolderGit2, gradient: "linear-gradient(135deg, color-mix(in srgb, var(--moss) 15%, transparent), color-mix(in srgb, var(--moss) 5%, transparent))" },
+    { label: "Messages", value: stats?.messages, icon: MessageSquare, gradient: "linear-gradient(135deg, color-mix(in srgb, var(--primary) 12%, transparent), color-mix(in srgb, var(--primary) 4%, transparent))" },
+    { label: "Builds", value: stats?.builds, icon: Cpu, gradient: "linear-gradient(135deg, color-mix(in srgb, var(--danger) 12%, transparent), color-mix(in srgb, var(--danger) 4%, transparent))" },
   ];
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" data-testid="admin-overview">
       {cards.map((c) => (
-        <div key={c.label} className="border rounded-sm p-5"
-          style={{ backgroundColor: "var(--card)", borderColor: "var(--border)" }}>
-          <c.icon className="w-5 h-5 mb-3" style={{ color: "var(--gold)" }} />
-          <div className="font-heading text-4xl" style={{ color: "var(--ink)" }}>{c.value ?? "—"}</div>
-          <div className="font-mono text-xs mt-1" style={{ color: "var(--muted-foreground)" }}>{c.label}</div>
+        <div key={c.label} className="rounded-2xl p-5 transition-all hover:-translate-y-0.5 hover:shadow-lg"
+          style={{ background: c.gradient, boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl mb-4"
+            style={{ backgroundColor: "color-mix(in srgb, var(--gold) 15%, transparent)" }}>
+            <c.icon className="w-5 h-5" style={{ color: "var(--gold)" }} />
+          </div>
+          <div className="text-4xl font-bold tracking-tight" style={{ color: "var(--ink)" }}>{c.value ?? "—"}</div>
+          <div className="text-[12px] font-medium mt-1" style={{ color: "var(--muted-foreground)" }}>{c.label}</div>
         </div>
       ))}
     </div>
@@ -103,35 +134,35 @@ function DatabaseView() {
   };
   const cols = rows.length ? Object.keys(rows[0]).slice(0, 6) : [];
   return (
-    <div className="flex gap-6" data-testid="admin-database">
-      <div className="w-56 shrink-0 space-y-1">
+    <div className="flex gap-6 flex-1" data-testid="admin-database">
+      <div className="w-52 shrink-0 space-y-1">
         {tables.map((t) => (
           <button key={t.name} data-testid={`table-${t.name}`} onClick={() => open(t.name)}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-sm font-mono text-xs transition-colors"
+            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[12px] font-medium transition-all"
             style={selected === t.name
-              ? { backgroundColor: "var(--forest)", color: "white" }
-              : { backgroundColor: "var(--parchment)", color: "var(--foreground)" }}>
+              ? { backgroundColor: "var(--gold)", color: "white", boxShadow: "0 2px 8px color-mix(in srgb, var(--gold) 25%, transparent)" }
+              : { color: "var(--muted-foreground)" }}>
             <span className="flex items-center gap-2"><Database className="w-3.5 h-3.5" /> {t.name}</span>
-            <span className="opacity-60">{t.count}</span>
+            <span className={selected === t.name ? "opacity-80" : "opacity-50"}>{t.count}</span>
           </button>
         ))}
       </div>
-      <div className="flex-1 border rounded-sm overflow-hidden"
-        style={{ backgroundColor: "var(--card)", borderColor: "var(--border)" }}>
+      <div className="flex-1 rounded-2xl overflow-hidden flex flex-col"
+        style={{ backgroundColor: "color-mix(in srgb, var(--card) 70%, transparent)", boxShadow: "0 2px 16px rgba(0,0,0,0.05)" }}>
         {!selected ? (
-          <div className="p-12 text-center font-mono text-sm" style={{ color: "var(--muted-foreground)" }}>Select a table to browse its rows.</div>
+          <div className="flex-1 flex items-center justify-center text-sm" style={{ color: "var(--muted-foreground)" }}>Select a table to browse its rows.</div>
         ) : rows.length === 0 ? (
-          <div className="p-12 text-center font-mono text-sm" style={{ color: "var(--muted-foreground)" }}>No rows in {selected}.</div>
+          <div className="flex-1 flex items-center justify-center text-sm" style={{ color: "var(--muted-foreground)" }}>No rows in {selected}.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs font-mono">
-              <thead style={{ backgroundColor: "var(--sand)" }}>
-                <tr>{cols.map((c) => <th key={c} className="text-left px-3 py-2" style={{ color: "var(--muted-foreground)" }}>{c}</th>)}</tr>
+          <div className="overflow-auto flex-1">
+            <table className="w-full text-[12px]">
+              <thead className="sticky top-0" style={{ backgroundColor: "color-mix(in srgb, var(--sand) 50%, transparent)" }}>
+                <tr>{cols.map((c) => <th key={c} className="text-left px-4 py-3 font-semibold" style={{ color: "var(--muted-foreground)" }}>{c}</th>)}</tr>
               </thead>
               <tbody>
                 {rows.map((r, i) => (
-                  <tr key={i} className="border-t" style={{ borderColor: "var(--sand)" }}>
-                    {cols.map((c) => <td key={c} className="px-3 py-2 max-w-[220px] truncate" style={{ color: "var(--foreground)" }}>{typeof r[c] === "object" ? JSON.stringify(r[c]) : String(r[c] ?? "")}</td>)}
+                  <tr key={i} className="transition-colors hover:bg-[color:var(--sand)]">
+                    {cols.map((c) => <td key={c} className="px-4 py-2.5 max-w-[220px] truncate" style={{ color: "var(--ink)" }}>{typeof r[c] === "object" ? JSON.stringify(r[c]) : String(r[c] ?? "")}</td>)}
                   </tr>
                 ))}
               </tbody>
@@ -198,30 +229,35 @@ function Agents() {
   };
   return (
     <div data-testid="admin-agents">
-      <p className="font-mono text-xs mb-5" style={{ color: "var(--muted-foreground)" }}>Configure the model and provider each agent uses. Models are fetched directly from the provider API — select a provider, then pick a model from the dropdown.</p>
-      <div className="border rounded-sm divide-y" style={{ backgroundColor: "var(--card)", borderColor: "var(--border)", divideColor: "var(--sand)" }}>
-        {AGENT_LIST.map((a) => {
+      <p className="text-[12px] mb-5" style={{ color: "var(--muted-foreground)" }}>Configure the model and provider each agent uses. Models are fetched directly from the provider API — select a provider, then pick a model from the dropdown.</p>
+      <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: "color-mix(in srgb, var(--card) 70%, transparent)", boxShadow: "0 2px 16px rgba(0,0,0,0.05)" }}>
+        {AGENT_LIST.map((a, idx) => {
           const currentProvider = models[a.key]?.provider || "sarvam";
           const currentModel = models[a.key]?.model || "";
           const options = availableModels[a.key] || [];
           const isLoading = loadingModels[a.key];
           return (
-            <div key={a.key} className="flex items-center px-5 py-4 gap-4">
-              <span className="flex items-center gap-3 font-mono text-sm w-40 shrink-0" style={{ color: "var(--foreground)" }}>
-                <Bot className="w-4 h-4" style={{ color: "var(--gold)" }} /> {a.label}
+            <div key={a.key} className="flex items-center px-5 py-5 gap-4 transition-colors hover:bg-[color:var(--sand)]"
+              style={idx < AGENT_LIST.length - 1 ? { borderBottom: "1px solid color-mix(in srgb, var(--sand) 60%, transparent)" } : {}}>
+              <span className="flex items-center gap-3 text-[13px] font-medium w-44 shrink-0" style={{ color: "var(--ink)" }}>
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl"
+                  style={{ backgroundColor: "color-mix(in srgb, var(--gold) 12%, transparent)" }}>
+                  <Bot className="w-4 h-4" style={{ color: "var(--gold)" }} />
+                </div>
+                {a.label}
               </span>
               <select data-testid={`provider-${a.key}`} value={currentProvider}
                 onChange={(e) => onProviderChange(a.key, e.target.value)}
-                className="border rounded-sm px-3 py-2 text-sm font-mono w-40 shrink-0 focus:outline-none focus:ring-2"
-                style={{ backgroundColor: "var(--parchment)", borderColor: "var(--border)", color: "var(--foreground)" }}>
+                className="rounded-xl px-3 py-2.5 text-[12px] w-40 shrink-0 outline-none focus:ring-2 focus:ring-[color:var(--gold)] transition-shadow"
+                style={{ backgroundColor: "color-mix(in srgb, var(--sand) 50%, transparent)", color: "var(--ink)" }}>
                 <option value="sarvam">Sarvam</option>
                 <option value="openrouter">OpenRouter</option>
               </select>
               <select data-testid={`model-${a.key}`} value={currentModel}
                 onChange={(e) => setModels({ ...models, [a.key]: { ...models[a.key], model: e.target.value, provider: currentProvider } })}
                 disabled={isLoading}
-                className="border rounded-sm px-3 py-2 text-sm font-mono flex-1 focus:outline-none focus:ring-2"
-                style={{ backgroundColor: "var(--parchment)", borderColor: "var(--border)", color: "var(--foreground)" }}>
+                className="rounded-xl px-3 py-2.5 text-[12px] flex-1 outline-none focus:ring-2 focus:ring-[color:var(--gold)] transition-shadow"
+                style={{ backgroundColor: "color-mix(in srgb, var(--sand) 50%, transparent)", color: "var(--ink)" }}>
                 <option value="">{isLoading ? "Loading models…" : "Select a model"}</option>
                 {options.map((m) => (
                   <option key={m.id} value={m.id}>{m.name || m.id}{m.context_length ? ` (${(m.context_length / 1000).toFixed(0)}k)` : ""}</option>
@@ -232,8 +268,8 @@ function Agents() {
         })}
       </div>
       <button data-testid="save-agent-models-btn" onClick={save} disabled={saving}
-        className="mt-5 flex items-center gap-1.5 text-white rounded-sm px-5 py-2.5 text-sm disabled:opacity-50"
-        style={{ backgroundColor: "var(--forest)" }}>
+        className="mt-5 flex items-center gap-1.5 text-white rounded-full px-5 py-2.5 text-sm font-semibold transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-50"
+        style={{ backgroundColor: "var(--gold)", boxShadow: "0 2px 10px color-mix(in srgb, var(--gold) 25%, transparent)" }}>
         <Save className="w-4 h-4" /> {saving ? "Saving…" : "Save models"}
       </button>
     </div>
@@ -262,23 +298,23 @@ function Integrations() {
   };
   return (
     <div data-testid="admin-integrations">
-      <p className="font-mono text-xs mb-5" style={{ color: "var(--muted-foreground)" }}>LLM providers (Sarvam and OpenRouter) and NemoClaw sandbox credentials. Changes apply immediately to new agent runs and sandbox calls. Handle with care — these are secrets.</p>
-      <div className="space-y-4 max-w-2xl">
+      <p className="text-[12px] mb-5" style={{ color: "var(--muted-foreground)" }}>LLM providers (Sarvam and OpenRouter) and NemoClaw sandbox credentials. Changes apply immediately to new agent runs and sandbox calls.</p>
+      <div className="space-y-5 max-w-2xl">
         {INTEG_FIELDS.map((f) => (
           <div key={f.key}>
-            <label className="font-mono text-xs flex items-center gap-1.5 mb-1.5" style={{ color: "var(--muted-foreground)" }}>
+            <label className="text-[12px] font-semibold flex items-center gap-1.5 mb-2" style={{ color: "var(--ink)" }}>
               {f.secret && <KeyRound className="w-3.5 h-3.5" style={{ color: "var(--gold)" }} />}{f.label}
             </label>
             <input data-testid={`integ-${f.key}`} type={f.secret ? "password" : "text"} value={cfg[f.key] || ""}
               onChange={(e) => setCfg({ ...cfg, [f.key]: e.target.value })}
-              className="w-full border rounded-sm px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2"
-              style={{ backgroundColor: "var(--parchment)", borderColor: "var(--border)", color: "var(--foreground)" }} />
+              className="w-full rounded-xl px-4 py-3 text-[13px] outline-none focus:ring-2 focus:ring-[color:var(--gold)] transition-shadow"
+              style={{ backgroundColor: "color-mix(in srgb, var(--sand) 50%, transparent)", color: "var(--ink)" }} />
           </div>
         ))}
       </div>
       <button data-testid="save-integrations-btn" onClick={save} disabled={saving}
-        className="mt-5 flex items-center gap-1.5 text-white rounded-sm px-5 py-2.5 text-sm disabled:opacity-50"
-        style={{ backgroundColor: "var(--forest)" }}>
+        className="mt-5 flex items-center gap-1.5 text-white rounded-full px-5 py-2.5 text-sm font-semibold transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-50"
+        style={{ backgroundColor: "var(--gold)", boxShadow: "0 2px 10px color-mix(in srgb, var(--gold) 25%, transparent)" }}>
         <Save className="w-4 h-4" /> {saving ? "Saving…" : "Save settings"}
       </button>
     </div>
@@ -309,73 +345,82 @@ function Skills() {
   return (
     <div data-testid="admin-skills">
       <div className="flex justify-between items-center mb-5">
-        <p className="font-mono text-xs" style={{ color: "var(--muted-foreground)" }}>Agent skill.md files — enabled skills are injected into the Coding Agent.</p>
+        <p className="text-[12px]" style={{ color: "var(--muted-foreground)" }}>Agent skill.md files — enabled skills are injected into the Coding Agent.</p>
         <button data-testid="new-skill-btn" onClick={() => setEditing({ ...EMPTY })}
-          className="flex items-center gap-1.5 text-white rounded-sm px-4 py-2 text-sm hover:-translate-y-px transition-transform"
-          style={{ backgroundColor: "var(--forest)" }}>
+          className="flex items-center gap-1.5 text-white rounded-full px-4 py-2 text-[13px] font-semibold transition-all hover:-translate-y-0.5 hover:shadow-md"
+          style={{ backgroundColor: "var(--gold)", boxShadow: "0 2px 8px color-mix(in srgb, var(--gold) 20%, transparent)" }}>
           <Plus className="w-4 h-4" /> New Skill
         </button>
       </div>
       <div className="grid md:grid-cols-2 gap-4">
         {skills.map((s) => (
-          <div key={s.id} data-testid={`skill-${s.id}`} className="border rounded-sm p-4"
-            style={{ backgroundColor: "var(--card)", borderColor: "var(--border)" }}>
+          <div key={s.id} data-testid={`skill-${s.id}`} className="rounded-2xl p-5 transition-all hover:-translate-y-0.5 hover:shadow-lg"
+            style={{ backgroundColor: "color-mix(in srgb, var(--card) 70%, transparent)", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}>
             <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2">
-                <BookText className="w-4 h-4" style={{ color: "var(--gold)" }} />
-                <span className="font-mono text-sm" style={{ color: "var(--ink)" }}>{s.name}</span>
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl"
+                  style={{ backgroundColor: "color-mix(in srgb, var(--gold) 12%, transparent)" }}>
+                  <BookText className="w-4 h-4" style={{ color: "var(--gold)" }} />
+                </div>
+                <span className="text-[14px] font-semibold" style={{ color: "var(--ink)" }}>{s.name}</span>
               </div>
               <div className="flex items-center gap-2">
                 <button data-testid={`toggle-skill-${s.id}`} onClick={() => toggle(s)}
-                  className="font-mono text-[10px] px-2 py-0.5 rounded-sm"
+                  className="text-[10px] font-semibold px-2.5 py-1 rounded-full transition-all"
                   style={s.enabled
-                    ? { backgroundColor: "color-mix(in srgb, var(--moss) 15%, transparent)", color: "var(--moss)" }
-                    : { backgroundColor: "var(--sand)", color: "var(--muted-foreground)" }}>
+                    ? { backgroundColor: "color-mix(in srgb, var(--moss) 12%, transparent)", color: "var(--moss)" }
+                    : { backgroundColor: "color-mix(in srgb, var(--muted-foreground) 8%, transparent)", color: "var(--muted-foreground)" }}>
                   {s.enabled ? "enabled" : "disabled"}
                 </button>
-                <button onClick={() => setEditing(s)} className="hover:opacity-70" style={{ color: "var(--muted-foreground)" }}>
-                  <Edit3 className="w-4 h-4" />
+                <button onClick={() => setEditing(s)} className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[color:var(--sand)]" style={{ color: "var(--muted-foreground)" }}>
+                  <Edit3 className="w-3.5 h-3.5" />
                 </button>
-                <button data-testid={`delete-skill-${s.id}`} onClick={() => del(s.id)} className="hover:opacity-70" style={{ color: "var(--danger)" }}>
-                  <Trash2 className="w-4 h-4" />
+                <button data-testid={`delete-skill-${s.id}`} onClick={() => del(s.id)} className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[color:var(--sand)]" style={{ color: "var(--danger)" }}>
+                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
-            <div className="flex gap-1 mt-2 flex-wrap">
+            <div className="flex gap-1.5 mt-3 flex-wrap">
               {(s.agents || []).map((a) => (
-                <span key={a} className="font-mono text-[10px] px-2 py-0.5 rounded-sm"
-                  style={{ backgroundColor: "var(--sand)", color: "var(--muted-foreground)" }}>{a}</span>
+                <span key={a} className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full"
+                  style={{ backgroundColor: "color-mix(in srgb, var(--gold) 10%, transparent)", color: "var(--gold)" }}>{a}</span>
               ))}
             </div>
-            <p className="font-mono text-[11px] mt-2 line-clamp-2 whitespace-pre-wrap" style={{ color: "var(--muted-foreground)" }}>{s.content}</p>
+            <p className="text-[12px] mt-3 line-clamp-2 whitespace-pre-wrap leading-relaxed" style={{ color: "var(--muted-foreground)" }}>{s.content}</p>
           </div>
         ))}
       </div>
 
       {editing && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: "color-mix(in srgb, var(--ink) 40%, transparent)" }}
+        <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
+          style={{ backgroundColor: "color-mix(in srgb, var(--ink) 40%, transparent)", backdropFilter: "blur(4px)" }}
           onClick={() => setEditing(null)}>
-          <div className="border rounded-sm w-full max-w-lg p-5" onClick={(e) => e.stopPropagation()}
-            data-testid="skill-editor" style={{ backgroundColor: "var(--card)", borderColor: "var(--border)" }}>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-heading text-2xl" style={{ color: "var(--ink)" }}>{editing.id ? "Edit Skill" : "New Skill"}</h3>
-              <button onClick={() => setEditing(null)}><X className="w-5 h-5" style={{ color: "var(--muted-foreground)" }} /></button>
+          <div className="rounded-2xl w-full max-w-lg p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}
+            data-testid="skill-editor" style={{ backgroundColor: "var(--card)" }}>
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="text-lg font-semibold" style={{ color: "var(--ink)" }}>{editing.id ? "Edit Skill" : "New Skill"}</h3>
+              <button onClick={() => setEditing(null)}
+                className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[color:var(--sand)]"
+                style={{ color: "var(--muted-foreground)" }}>
+                <X className="w-4 h-4" />
+              </button>
             </div>
             <div className="space-y-3">
               <input data-testid="skill-name-input" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="react.skill.md"
-                className="w-full border rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2"
-                style={{ backgroundColor: "var(--parchment)", borderColor: "var(--border)", color: "var(--foreground)" }} />
+                className="w-full rounded-xl px-3.5 py-2.5 text-[12px] outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
+                style={{ backgroundColor: "color-mix(in srgb, var(--sand) 50%, transparent)", color: "var(--ink)" }} />
               <input value={editing.agents.join(",")} onChange={(e) => setEditing({ ...editing, agents: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} placeholder="agents: coding,testing"
-                className="w-full border rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2"
-                style={{ backgroundColor: "var(--parchment)", borderColor: "var(--border)", color: "var(--foreground)" }} />
+                className="w-full rounded-xl px-3.5 py-2.5 text-[12px] outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
+                style={{ backgroundColor: "color-mix(in srgb, var(--sand) 50%, transparent)", color: "var(--ink)" }} />
               <textarea data-testid="skill-content-input" value={editing.content} onChange={(e) => setEditing({ ...editing, content: e.target.value })} rows={8} placeholder="# Skill markdown…"
-                className="w-full border rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2"
-                style={{ backgroundColor: "var(--parchment)", borderColor: "var(--border)", color: "var(--foreground)" }} />
-              <label className="flex items-center gap-2 font-mono text-xs" style={{ color: "var(--foreground)" }}>
+                className="w-full rounded-xl px-3.5 py-2.5 text-[12px] resize-none outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
+                style={{ backgroundColor: "color-mix(in srgb, var(--sand) 50%, transparent)", color: "var(--ink)" }} />
+              <label className="flex items-center gap-2 text-[12px] font-medium" style={{ color: "var(--ink)" }}>
                 <input type="checkbox" checked={editing.enabled} onChange={(e) => setEditing({ ...editing, enabled: e.target.checked })} /> enabled
               </label>
-              <button data-testid="save-skill-btn" onClick={save} className="w-full text-white rounded-sm py-2.5 text-sm font-medium"
-                style={{ backgroundColor: "var(--forest)" }}>Save Skill</button>
+              <button data-testid="save-skill-btn" onClick={save}
+                className="w-full text-white rounded-full py-2.5 text-sm font-semibold transition-all hover:-translate-y-0.5 hover:shadow-lg"
+                style={{ backgroundColor: "var(--gold)", boxShadow: "0 2px 10px color-mix(in srgb, var(--gold) 25%, transparent)" }}>Save Skill</button>
             </div>
           </div>
         </div>

@@ -41,30 +41,30 @@ export const THEMES = {
     group: "light",
     accent: "#976df8",
     bg: "#faf8fc",
-    text: "#2c2236",
+    text: "#3b2e4a",
     vars: {
       "--background": "270 20% 98%",
-      "--foreground": "265 30% 18%",
+      "--foreground": "268 28% 23%",
       "--card": "0 0% 100%",
-      "--card-foreground": "265 30% 18%",
+      "--card-foreground": "268 28% 23%",
       "--popover": "0 0% 100%",
-      "--popover-foreground": "265 30% 18%",
+      "--popover-foreground": "268 28% 23%",
       "--primary": "265 84% 66%",
       "--primary-foreground": "0 0% 100%",
-      "--secondary": "270 20% 94%",
-      "--secondary-foreground": "265 30% 18%",
-      "--muted": "270 20% 94%",
-      "--muted-foreground": "265 15% 50%",
+      "--secondary": "270 20% 95%",
+      "--secondary-foreground": "268 28% 23%",
+      "--muted": "270 20% 95%",
+      "--muted-foreground": "268 12% 52%",
       "--accent": "265 84% 66%",
       "--accent-foreground": "0 0% 100%",
       "--destructive": "0 62% 50%",
       "--destructive-foreground": "0 0% 100%",
-      "--border": "270 15% 90%",
-      "--input": "270 15% 90%",
+      "--border": "270 14% 91%",
+      "--input": "270 14% 91%",
       "--ring": "265 84% 66%",
       "--parchment": "#faf8fc",
       "--sand": "#f0ecf5",
-      "--ink": "#2c2236",
+      "--ink": "#3b2e4a",
       "--forest": "#7c5ce0",
       "--gold": "#976df8",
       "--moss": "#6b4fc7",
@@ -238,5 +238,5 @@ export function applyTheme(themeId) {
 }
 
 export function getSavedTheme() {
-  return localStorage.getItem("grizon-theme") || "parchment";
+  return localStorage.getItem("grizon-theme") || "lavender-light";
 }
