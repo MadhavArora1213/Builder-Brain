@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowUp, Square, RotateCw, RefreshCw, Terminal, Globe, Loader2, Eye, Code2, FileCode2, ExternalLink, Download } from "lucide-react";
+import { ArrowLeft, ArrowUp, Square, RotateCw, RefreshCw, Terminal, Globe, Loader2, Eye, Code2, ExternalLink, Download, ChevronRight, ChevronDown, FolderClosed, FolderOpen } from "lucide-react";
+import { FaReact, FaJs, FaNodeJs, FaCss3Alt, FaHtml5, FaPython, FaJava, FaDatabase, FaEnvira, FaGitAlt, FaImage, FaMarkdown } from "react-icons/fa";
+import { SiTypescript, SiJson, SiVite, SiTailwindcss, SiPostcss, SiNodedotjs } from "react-icons/si";
 import api from "@/lib/api";
 import { ChatMessage, QuestionCard, PlanCard, AgentTimeline } from "@/components/builder/parts";
 
@@ -17,6 +19,115 @@ function statusStyle(status, isActive) {
   if (STATUS_STYLE[status]) return STATUS_STYLE[status];
   if (isActive) return { backgroundColor: "color-mix(in srgb, var(--gold) 20%, transparent)", color: "var(--gold)" };
   return STATUS_STYLE.idle;
+}
+
+function FileIcon({ filename, className }) {
+  const ext = filename.split(".").pop().toLowerCase();
+  const name = filename.split("/").pop().toLowerCase();
+  const s = className || "w-4 h-4";
+
+  if (name === "package.json") return <SiNodedotjs className={s} style={{ color: "#68a063" }} />;
+  if (name === "tsconfig.json" || name === "tsconfig.node.json") return <SiTypescript className={s} style={{ color: "#3178c6" }} />;
+  if (name.startsWith("tsconfig")) return <SiTypescript className={s} style={{ color: "#3178c6" }} />;
+  if (name === "tailwind.config.ts" || name === "tailwind.config.js") return <SiTailwindcss className={s} style={{ color: "#06b6d4" }} />;
+  if (name === "vite.config.ts" || name === "vite.config.js") return <SiVite className={s} style={{ color: "#bd34fe" }} />;
+  if (name === "postcss.config.mjs" || name === "postcss.config.js") return <SiPostcss className={s} style={{ color: "#dd3a0a" }} />;
+  if (name === ".gitignore") return <FaGitAlt className={s} style={{ color: "#f05033" }} />;
+
+  const map = {
+    tsx: <FaReact className={s} style={{ color: "#61dafb" }} />,
+    jsx: <FaReact className={s} style={{ color: "#61dafb" }} />,
+    ts: <SiTypescript className={s} style={{ color: "#3178c6" }} />,
+    js: <FaJs className={s} style={{ color: "#f7df1e" }} />,
+    mjs: <FaJs className={s} style={{ color: "#f7df1e" }} />,
+    json: <SiJson className={s} style={{ color: "#a8b9cc" }} />,
+    css: <FaCss3Alt className={s} style={{ color: "#264de4" }} />,
+    html: <FaHtml5 className={s} style={{ color: "#e34c26" }} />,
+    py: <FaPython className={s} style={{ color: "#3776ab" }} />,
+    java: <FaJava className={s} style={{ color: "#ed8b00" }} />,
+    env: <FaEnvira className={s} style={{ color: "#ecd53f" }} />,
+    md: <FaMarkdown className={s} style={{ color: "#555" }} />,
+    svg: <FaImage className={s} style={{ color: "#ffb13b" }} />,
+    png: <FaImage className={s} style={{ color: "#a855f7" }} />,
+    jpg: <FaImage className={s} style={{ color: "#a855f7" }} />,
+    jpeg: <FaImage className={s} style={{ color: "#a855f7" }} />,
+    webp: <FaImage className={s} style={{ color: "#a855f7" }} />,
+    sql: <FaDatabase className={s} style={{ color: "#4479a1" }} />,
+    sh: <FaEnvira className={s} style={{ color: "#4eaa25" }} />,
+  };
+  return map[ext] || <Code2 className={s} style={{ color: "var(--muted-foreground)" }} />;
+}
+
+function buildTree(files) {
+  const root = { name: "", children: {}, isDir: true };
+  for (const f of files) {
+    const parts = (f.path || "").split("/").filter(Boolean);
+    let node = root;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (i === parts.length - 1) {
+        node.children[part] = { name: part, path: f.path, isDir: false };
+      } else {
+        if (!node.children[part]) node.children[part] = { name: part, children: {}, isDir: true };
+        node = node.children[part];
+      }
+    }
+  }
+  return root;
+}
+
+function FileTreeNode({ node, depth, selectedFile, onSelectFile, defaultOpen }) {
+  const [open, setOpen] = useState(defaultOpen ?? true);
+  const indent = depth * 20;
+  if (!node.isDir) {
+    return (
+      <button onClick={() => onSelectFile(node.path)} title={node.path}
+        className="w-full text-left flex items-center gap-2 font-mono text-[11px] border-b truncate"
+        style={{ paddingLeft: `${indent + 12}px`, paddingTop: "4px", paddingBottom: "4px",
+          backgroundColor: selectedFile === node.path ? "var(--forest)" : "transparent",
+          color: selectedFile === node.path ? "white" : "var(--foreground)",
+          borderColor: selectedFile === node.path ? "var(--border)" : "var(--sand)" }}>
+        <FileIcon filename={node.name} className="w-4 h-4 shrink-0" /> <span className="truncate">{node.name}</span>
+      </button>
+    );
+  }
+  const entries = Object.values(node.children).sort((a, b) => {
+    if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+  return (
+    <div>
+      <button onClick={() => setOpen(!open)}
+        className="w-full text-left flex items-center gap-2 font-mono text-[11px] font-medium border-b"
+        style={{ paddingLeft: `${indent + 12}px`, paddingTop: "4px", paddingBottom: "4px",
+          backgroundColor: "color-mix(in srgb, var(--parchment) 60%, transparent)",
+          color: "var(--foreground)", borderColor: "var(--sand)" }}>
+        <span className="w-4 h-4 shrink-0 flex items-center justify-center">
+          {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+        </span>
+        {open ? <FolderOpen className="w-4 h-4 shrink-0" style={{ color: "var(--gold)" }} /> : <FolderClosed className="w-4 h-4 shrink-0" style={{ color: "var(--gold)" }} />}
+        <span>{node.name}</span>
+      </button>
+      {open && entries.map((child) => (
+        <FileTreeNode key={child.name} node={child} depth={depth + 1} selectedFile={selectedFile} onSelectFile={onSelectFile} />
+      ))}
+    </div>
+  );
+}
+
+function FileTree({ files, selectedFile, onSelectFile }) {
+  const tree = buildTree(files);
+  const entries = Object.values(tree.children).sort((a, b) => {
+    if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+  return (
+    <div className="overflow-y-auto h-full">
+      {entries.map((node) => (
+        <FileTreeNode key={node.name} node={node} depth={0} selectedFile={selectedFile} onSelectFile={onSelectFile} />
+      ))}
+    </div>
+  );
 }
 
 export default function Builder() {
@@ -341,15 +452,7 @@ export default function Builder() {
                   {files.length === 0 ? (
                     <div className="p-4 font-mono text-[11px]" style={{ color: "var(--muted-foreground)" }}>No files yet.</div>
                   ) : (
-                    [...files].sort((a, b) => a.path.localeCompare(b.path)).map((f) => (
-                      <button key={f.path} data-testid={`file-item-${f.path}`} title={f.path} onClick={() => setSelectedFile(f.path)}
-                        className="w-full text-left flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border-b truncate"
-                        style={currentFile?.path === f.path
-                          ? { backgroundColor: "var(--forest)", color: "white", borderColor: "var(--border)" }
-                          : { color: "var(--foreground)", borderColor: "var(--sand)" }}>
-                        <FileCode2 className="w-3 h-3 shrink-0" /> <span className="truncate">{f.path}</span>
-                      </button>
-                    ))
+                    <FileTree files={files} selectedFile={selectedFile} onSelectFile={setSelectedFile} />
                   )}
                 </div>
                 <div className="col-span-2 min-h-0 overflow-auto">
