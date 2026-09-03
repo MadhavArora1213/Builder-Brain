@@ -63,11 +63,10 @@ export default function Builder() {
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   useEffect(() => {
-    if (rightTab !== "code" && !isActive) return;
     fetchFiles();
-    const t = setInterval(fetchFiles, 3000);
+    const t = setInterval(fetchFiles, 1000);
     return () => clearInterval(t);
-  }, [rightTab, isActive, fetchFiles]);
+  }, [fetchFiles]);
 
   useEffect(() => {
     const fm = location.state?.firstMessage;
@@ -79,7 +78,7 @@ export default function Builder() {
   }, [location.state, project, messages.length]);
 
   useEffect(() => {
-    const t = setInterval(fetchAll, 3000);
+    const t = setInterval(fetchAll, 1000);
     return () => clearInterval(t);
   }, [fetchAll]);
 
@@ -249,7 +248,7 @@ export default function Builder() {
               if (m.type === "questions") return <QuestionCard key={m.id} data={m.data} locked={status !== "asking"} onSubmit={submitAnswers} />;
               return <ChatMessage key={m.id} m={m} onOpenFile={openFile} />;
             })}
-            {isActive && (
+            {isActive && !messages.some(m => m.type === "status" || m.type === "file") && (
               <div className="flex items-center gap-2 font-mono text-[11px] pl-1" style={{ color: "var(--forest)" }}>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" /> Agents working…
               </div>

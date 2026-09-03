@@ -2,6 +2,7 @@ import json
 import re
 from openai import AsyncOpenAI
 import config
+from typing import AsyncGenerator
 
 
 async def _client(provider: str = "sarvam"):
@@ -25,6 +26,24 @@ async def chat(system: str, user: str, temperature: float = 0.3, max_tokens: int
         ],
     )
     return resp.choices[0].message.content or ""
+
+
+async def chat_stream(system: str, user: str, temperature: float = 0.3, max_tokens: int = 16000, model: str = None, provider: str = "sarvam") -> AsyncGenerator[str, None]:
+    """Streaming version of chat - yields chunks as they arrive."""
+    client, default_model = await _client(provider)
+    stream = await client.chat.completions.create(
+        model=model or default_model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        stream=True,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    )
+    async for chunk in stream:
+        if chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
 
 
 def extract_json(text: str):

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Database, BookText, Users, FolderGit2, MessageSquare, Cpu, Plus, Trash2, Edit3, X, Bot, KeyRound, Save, LayoutDashboard, Settings, ChevronRight } from "lucide-react";
+import { Database, BookText, Users, FolderGit2, MessageSquare, Cpu, Plus, Trash2, Edit3, X, Bot, KeyRound, Save, LayoutDashboard, Settings, ChevronRight, FileText, RotateCcw } from "lucide-react";
 import api from "@/lib/api";
 import Nav from "@/components/Nav";
 
@@ -9,6 +9,7 @@ const SIDEBAR_ITEMS = [
   { key: "database", label: "Database", icon: Database },
   { key: "skills", label: "Skills", icon: BookText },
   { key: "agents", label: "Agents", icon: Bot },
+  { key: "prompts", label: "Prompts", icon: FileText },
   { key: "integrations", label: "Integrations", icon: Settings },
 ];
 
@@ -60,6 +61,7 @@ export default function Admin() {
             {tab === "database" && <DatabaseView />}
             {tab === "skills" && <Skills />}
             {tab === "agents" && <Agents />}
+            {tab === "prompts" && <Prompts />}
             {tab === "integrations" && <Integrations />}
           </div>
         </main>
@@ -236,6 +238,117 @@ function Agents() {
         style={{ backgroundColor: "var(--forest)" }}>
         <Save className="w-4 h-4" /> {saving ? "Saving…" : "Save models"}
       </button>
+    </div>
+  );
+}
+
+const PROMPT_AGENTS = [
+  { key: "manager", label: "Manager Agent", desc: "Classifies user intent (NEW/MODIFY/CHAT) and routes the conversation." },
+  { key: "question", label: "Question Agent", desc: "Generates clarifying questions before building." },
+  { key: "planner", label: "Planner Agent", desc: "Converts requirements into a structured implementation plan." },
+  { key: "coding", label: "Coding Agent", desc: "Generates the full application code from the plan." },
+  { key: "testing", label: "Testing Agent", desc: "Verifies the build works and produces a PRD." },
+];
+
+function Prompts() {
+  const [prompts, setPrompts] = useState({});
+  const [defaults, setDefaults] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState(null);
+
+  useEffect(() => {
+    api.get("/admin/agent-prompts").then((r) => {
+      setPrompts(r.data.prompts);
+      setDefaults(r.data.defaults);
+    }).catch(() => {});
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const { data } = await api.put("/admin/agent-prompts", { prompts });
+      setPrompts(data.prompts);
+      toast.success("Agent prompts updated");
+    } catch { toast.error("Failed to save"); } finally { setSaving(false); }
+  };
+
+  const resetAll = async () => {
+    if (!window.confirm("Reset all prompts to defaults?")) return;
+    try {
+      const { data } = await api.post("/admin/agent-prompts/reset");
+      setPrompts(data.prompts);
+      toast.success("Prompts reset to defaults");
+    } catch { toast.error("Failed to reset"); }
+  };
+
+  const resetOne = (key) => {
+    setPrompts({ ...prompts, [key]: defaults[key] || "" });
+    toast.success(`Reset ${key} to default`);
+  };
+
+  return (
+    <div data-testid="admin-prompts">
+      <p className="font-mono text-xs mb-5" style={{ color: "var(--muted-foreground)" }}>
+        Edit the system prompt each agent receives. Changes apply to all new conversations immediately.
+        Each agent has specific JSON output requirements — keep those intact when editing.
+      </p>
+      <div className="space-y-3">
+        {PROMPT_AGENTS.map((a) => {
+          const isOpen = expanded === a.key;
+          return (
+            <div key={a.key} className="border rounded-sm overflow-hidden"
+              style={{ backgroundColor: "var(--card)", borderColor: "var(--border)" }}>
+              <button onClick={() => setExpanded(isOpen ? null : a.key)}
+                className="w-full flex items-center justify-between px-5 py-3 text-left"
+                style={{ backgroundColor: isOpen ? "var(--sand)" : "transparent" }}>
+                <span className="flex items-center gap-3">
+                  <Bot className="w-4 h-4" style={{ color: "var(--gold)" }} />
+                  <span className="font-mono text-sm font-medium" style={{ color: "var(--ink)" }}>{a.label}</span>
+                  <span className="font-mono text-[11px]" style={{ color: "var(--muted-foreground)" }}>— {a.desc}</span>
+                </span>
+                <span className="font-mono text-[10px] px-2 py-0.5 rounded-sm"
+                  style={{ backgroundColor: "var(--sand)", color: "var(--muted-foreground)" }}>
+                  {(prompts[a.key] || "").length} chars
+                </span>
+              </button>
+              {isOpen && (
+                <div className="px-5 pb-4 border-t" style={{ borderColor: "var(--sand)" }}>
+                  <div className="flex items-center justify-between mt-3 mb-2">
+                    <span className="font-mono text-[11px]" style={{ color: "var(--muted-foreground)" }}>
+                      System prompt for {a.label}
+                    </span>
+                    <button onClick={() => resetOne(a.key)}
+                      className="flex items-center gap-1 font-mono text-[11px] hover:opacity-70"
+                      style={{ color: "var(--gold)" }}>
+                      <RotateCcw className="w-3 h-3" /> Reset to default
+                    </button>
+                  </div>
+                  <textarea
+                    data-testid={`prompt-${a.key}`}
+                    value={prompts[a.key] || ""}
+                    onChange={(e) => setPrompts({ ...prompts, [a.key]: e.target.value })}
+                    rows={12}
+                    className="w-full border rounded-sm px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 resize-y"
+                    style={{ backgroundColor: "var(--parchment)", borderColor: "var(--border)", color: "var(--foreground)", minHeight: "160px" }}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex items-center gap-3 mt-5">
+        <button data-testid="save-agent-prompts-btn" onClick={save} disabled={saving}
+          className="flex items-center gap-1.5 text-white rounded-sm px-5 py-2.5 text-sm disabled:opacity-50"
+          style={{ backgroundColor: "var(--forest)" }}>
+          <Save className="w-4 h-4" /> {saving ? "Saving…" : "Save prompts"}
+        </button>
+        <button onClick={resetAll}
+          className="flex items-center gap-1.5 rounded-sm px-5 py-2.5 text-sm border hover:opacity-80"
+          style={{ borderColor: "var(--border)", color: "var(--muted-foreground)" }}>
+          <RotateCcw className="w-4 h-4" /> Reset all to defaults
+        </button>
+      </div>
     </div>
   );
 }

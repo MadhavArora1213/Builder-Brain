@@ -17,7 +17,7 @@ from projects_router import router as projects_router
 from builder_router import router as builder_router
 from admin_router import router as admin_router
 from github_router import router as github_router
-from seed import seed_skills, seed_config
+from seed import seed_skills, seed_config, seed_agent_prompts
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -70,4 +70,5 @@ async def startup():
     await seed_admin()
     await seed_skills()
     await seed_config()
+    await seed_agent_prompts()
     logger.info("Grizon AI startup complete")

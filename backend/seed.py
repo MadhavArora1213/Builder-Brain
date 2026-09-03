@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from db import AsyncSessionLocal
 from models import Skill, SystemConfig
+from config import DEFAULT_AGENT_PROMPTS
 
 DEFAULT_SKILLS = [
     {"name": "react.skill.md", "category": "coding",
@@ -49,3 +50,22 @@ async def seed_config():
             )
             session.add(config)
             await session.commit()
+
+
+async def seed_agent_prompts():
+    """Ensure default agent prompts exist in system_config.settings.
+    Only seeds if agent_prompts is completely missing — does NOT overwrite existing."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(SystemConfig).filter(SystemConfig.id == "config"))
+        doc = result.scalars().first()
+        if not doc:
+            return
+        settings = dict(doc.settings) if doc.settings else {}
+        existing = settings.get("agent_prompts", {})
+        if not isinstance(existing, dict):
+            existing = {}
+        if existing:
+            return
+        settings["agent_prompts"] = dict(DEFAULT_AGENT_PROMPTS)
+        doc.settings = settings
+        await session.commit()

@@ -180,6 +180,30 @@ async def put_agent_models(body: AgentModelsBody, admin: dict = Depends(require_
     return {"models": await config.get_agent_models()}
 
 
+# ---- Agent system prompts ----
+class AgentPromptsBody(BaseModel):
+    prompts: dict
+
+
+@router.get("/agent-prompts")
+async def get_agent_prompts(admin: dict = Depends(require_admin)):
+    prompts = await config.get_agent_prompts()
+    defaults = config.DEFAULT_AGENT_PROMPTS
+    return {"prompts": prompts, "defaults": defaults}
+
+
+@router.put("/agent-prompts")
+async def put_agent_prompts(body: AgentPromptsBody, admin: dict = Depends(require_admin)):
+    await config.set_agent_prompts(body.prompts)
+    return {"prompts": await config.get_agent_prompts()}
+
+
+@router.post("/agent-prompts/reset")
+async def reset_agent_prompts(admin: dict = Depends(require_admin)):
+    await config.reset_agent_prompts()
+    return {"prompts": await config.get_agent_prompts()}
+
+
 # ---- Integration credentials (Sarvam + OpenRouter + NemoClaw MCP) ----
 class IntegrationsBody(BaseModel):
     sarvam_api_key: str | None = None
@@ -190,6 +214,7 @@ class IntegrationsBody(BaseModel):
     openrouter_model: str | None = None
     mcp_url: str | None = None
     mcp_token: str | None = None
+    unsplash_access_key: str | None = None
 
 
 @router.get("/settings")

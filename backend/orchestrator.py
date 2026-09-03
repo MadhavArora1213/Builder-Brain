@@ -16,6 +16,7 @@ import llm
 import mcp_client as mcp
 import config
 import github_router
+import unsplash
 import logging
 from db import AsyncSessionLocal, log_event
 from models import Project, Message, ProjectFile, Skill, User, WorkflowRun, SandboxSession, AgentExecution
@@ -117,23 +118,16 @@ async def get_skills_for(agent_name: str) -> str:
 
 
 # --------------------------------------------------------------------------
+# Dynamic system prompts (loaded from DB via config module)
+# --------------------------------------------------------------------------
+async def _get_prompt(agent: str) -> str:
+    """Load agent system prompt from DB; falls back to hardcoded defaults."""
+    return await config.get_agent_prompt(agent)
+
+
+# --------------------------------------------------------------------------
 # Manager Agent
 # --------------------------------------------------------------------------
-MANAGER_SYS = """You are the Manager Agent of Grizon AI, an autonomous full-stack app builder.
-Classify the user's request and decide the next step. You never write code yourself.
-Return JSON with this exact shape:
-{
-  "intent": "NEW" | "MODIFY" | "CHAT",
-  "needs_clarification": true | false,
-  "reply": "short conversational reply (only for CHAT)",
-  "requirements_summary": "concise summary of what the user wants built or changed"
-}
-Rules:
-- NEW = build a brand new application. MODIFY = change an existing project. CHAT = greeting/question, no build.
-- Set needs_clarification true ONLY when critical info is genuinely missing to build a NEW app safely
-  (e.g. persistence/database, auth, external API keys, payment provider).
-- For MODIFY of an existing project, set needs_clarification false unless the change itself is ambiguous
-  (e.g. "change the color" with no color given)."""
 
 
 async def manager_classify(project, user_message, existing_summary, has_build):
@@ -142,7 +136,7 @@ async def manager_classify(project, user_message, existing_summary, has_build):
         ctx += f"Prior requirements: {existing_summary}\n"
     ctx += f"User message: {user_message}"
     model, provider = await config.get_agent_model("manager")
-    data, raw = await llm.chat_json(MANAGER_SYS, ctx, model=model, provider=provider)
+    data, raw = await llm.chat_json(await _get_prompt("manager"), ctx, model=model, provider=provider)
     if not data:
         data = {"intent": "NEW", "needs_clarification": False,
                 "reply": "", "requirements_summary": user_message}
@@ -152,35 +146,12 @@ async def manager_classify(project, user_message, existing_summary, has_build):
 # --------------------------------------------------------------------------
 # Question Agent
 # --------------------------------------------------------------------------
-QUESTION_SYS = """You are the Question Agent of Grizon AI. Produce ONLY the essential clarifying
-questions needed to safely build the requested app. Prefer MULTIPLE CHOICE. Ask at most 4 questions,
-fewer if possible. Skip anything already clear from the requirements.
-
-Mandatory rules:
-- If the app needs to store/persist data (any CRUD, accounts, saved items), include ONE database
-  question of type "choice" with options ["SQLite","PostgreSQL","In-memory / localStorage (no database)"].
-- If the app needs an external API or third-party service (e.g. a chatbot needing an LLM API key,
-  payments, email, maps, weather), include a question of type "secret" asking the user to paste that
-  API key. Set its "key" to a clean UPPER_SNAKE env name (e.g. OPENAI_API_KEY). The key will be stored
-  securely and injected into the backend only, never the frontend.
-- For yes/no needs (auth? admin panel? dark mode?), use type "choice" with options ["Yes","No"].
-- If a modification is ambiguous (e.g. "change color"), ask a focused choice/text question.
-
-Return ONLY JSON:
-{
-  "needs_clarification": true | false,
-  "questions": [
-    {"key": "auth", "question": "Do you need user authentication?", "type": "choice", "options": ["Yes","No"], "required": true},
-    {"key": "OPENAI_API_KEY", "question": "Paste your OpenAI API key (stored securely, backend only)", "type": "secret", "required": false}
-  ]
-}
-type is one of "choice" | "text" | "secret". If nothing needs asking, return needs_clarification false and an empty questions array."""
 
 
 async def question_agent(requirements, is_modify=False):
     prompt = f"{'MODIFICATION' if is_modify else 'NEW APP'} requirements:\n{requirements}"
     model, provider = await config.get_agent_model("question")
-    data, raw = await llm.chat_json(QUESTION_SYS, prompt, model=model, provider=provider)
+    data, raw = await llm.chat_json(await _get_prompt("question"), prompt, model=model, provider=provider)
     if not data:
         return {"needs_clarification": False, "questions": []}
     return data
@@ -189,20 +160,6 @@ async def question_agent(requirements, is_modify=False):
 # --------------------------------------------------------------------------
 # Planner Agent
 # --------------------------------------------------------------------------
-PLANNER_SYS = """You are the Planner Agent of Grizon AI. Convert confirmed requirements into a
-structured implementation plan. Inspect the existing project when modifying; do NOT redesign it.
-Return ONLY JSON:
-{
-  "goal": "string",
-  "architecture": {"frontend": "string", "backend": "string"},
-  "technology": ["string"],
-  "components": ["string"],
-  "database": {"required": true, "tables": ["string"]},
-  "tasks": [{"id": "task-1", "title": "string", "description": "string"}],
-  "dependencies": ["string"]
-}
-Default stack: React + Vite + TypeScript frontend, Express + TypeScript backend, unless the user
-explicitly asks for Next.js or something else. Keep tasks concrete and ordered (5-9 tasks)."""
 
 
 async def planner_run(requirements, existing_files_summary=""):
@@ -210,7 +167,7 @@ async def planner_run(requirements, existing_files_summary=""):
     if existing_files_summary:
         prompt += f"\nExisting project files:\n{existing_files_summary}\nModify minimally."
     model, provider = await config.get_agent_model("planner")
-    data, raw = await llm.chat_json(PLANNER_SYS, prompt, model=model, provider=provider)
+    data, raw = await llm.chat_json(await _get_prompt("planner"), prompt, model=model, provider=provider)
     if not data:
         data = {"goal": requirements, "architecture": {"frontend": "React/Vite", "backend": "Express"},
                 "technology": ["TypeScript", "React", "Tailwind CSS", "Express"],
@@ -370,55 +327,6 @@ class BState(TypedDict, total=False):
     exec_ok: bool
 
 
-CODING_SYS = """You are the Coding Agent of Grizon AI, an expert full-stack engineer.
-Generate a COMPLETE, minimal, runnable application from the plan. Prefer few files that actually work.
-
-SANDBOX EXECUTION MODEL (critical): the sandbox runs an ENTRYPOINT which MUST be an ACTUAL FILE you
-created in the workspace (NOT a shell command). Never use a start.sh. The sandbox installs deps and
-runs the app from the entrypoint file automatically. Choose the framework and set entrypoint exactly:
-
-1. FULL-STACK (default) - React + Vite + TypeScript frontend in frontend/, Express + TypeScript backend in backend/.
-   - frontend/ files: package.json, vite.config.ts, index.html, tsconfig.json, tsconfig.node.json,
-     tailwind.config.ts, postcss.config.mjs, src/main.tsx, src/App.tsx, src/index.css.
-   - backend/ files: package.json, tsconfig.json, server.ts.
-   - Backend binds 0.0.0.0:3001. Vite binds host '0.0.0.0' port 9999 and proxies /api -> http://localhost:3001.
-   - entrypoint MUST be "frontend/src/main.tsx" (this triggers the dual-service runner that starts BOTH
-     the Vite frontend on 9999 and the Express backend on 3001).
-   - framework = "vite-express".
-
-2. SINGLE-SERVICE - a single server (FastAPI/Flask/Express-only/Node-only).
-   - The server MUST bind 0.0.0.0 and listen on port 9999. NO debug/reload modes.
-   - Python: include requirements.txt; entrypoint = the server file, e.g. "server.py" or "app.py".
-   - Node/Express TS: entrypoint = "server.ts".
-   - framework = "single".
-
-3. NEXT.JS (only if the user explicitly asks for Next.js) - put ALL files in the workspace ROOT (not frontend/).
-   TypeScript. Files: package.json, next.config.ts, tsconfig.json, tailwind.config.ts, postcss.config.mjs,
-   src/app/layout.tsx, src/app/page.tsx, src/app/globals.css. Backend via Next.js API routes.
-   package.json scripts.dev MUST be "next dev -H 0.0.0.0 -p 9999".
-   - entrypoint MUST be "package.json".
-   - framework = "nextjs".
-
-Use JavaScript ONLY if the user explicitly requests it; otherwise TypeScript.
-
-Keep the app MINIMAL: prefer the fewest files that still run (target ~8-10 files for a full-stack app,
-fewer for single-service). Keep each file concise and complete.
-
-OUTPUT FORMAT (this is NOT JSON). Emit exactly three header lines, then one block per file:
-
-FRAMEWORK: <vite-express|nextjs|single>
-ENTRYPOINT: <entrypoint file path>
-SUMMARY: <one line>
-
-===GRIZON_FILE: relative/path/to/file===
-<full raw file content here>
-===GRIZON_END===
-
-Repeat the ===GRIZON_FILE...===GRIZON_END=== block for every file. Do NOT wrap content in quotes or
-escape it. Do NOT output any other prose, explanation, or markdown fences. Every package.json must list
-all needed dependencies so install succeeds."""
-
-
 def parse_code_output(raw: str) -> dict:
     import re
     fw = re.search(r"FRAMEWORK:\s*([^\s]+)", raw)
@@ -462,6 +370,35 @@ async def coding_node(state: BState) -> BState:
     skills = await get_skills_for("coding")
     prompt = f"PLAN:\n{state['plan']}\n"
 
+    # Fetch relevant images from Unsplash based on project requirements
+    requirements = wf.get('requirements', '') or state.get('plan', {}).get('goal', '')
+    if requirements and not is_modify and not retry:
+        await add_message(project, "agent", "status", "Fetching relevant images for your project...", agent="coding")
+        try:
+            # Get theme and visual style from plan
+            plan = state.get('plan', {})
+            theme = plan.get('theme', 'light')
+            visual_style = plan.get('visual_style', 'modern')
+            
+            # Build search query based on visual style and requirements
+            search_query = requirements
+            if visual_style == "luxury":
+                search_query = f"{requirements} luxury elegant premium"
+            elif visual_style == "minimal":
+                search_query = f"{requirements} minimal clean simple"
+            elif visual_style == "playful":
+                search_query = f"{requirements} colorful fun vibrant"
+            elif visual_style == "professional":
+                search_query = f"{requirements} professional corporate modern"
+            
+            images = await unsplash.get_curated_images(search_query, theme=theme, visual_style=visual_style, count=8)
+            images_text = unsplash.format_images_for_prompt(images)
+            if images_text:
+                prompt += images_text
+                await add_message(project, "agent", "status", f"Fetched {sum(len(v) for v in images.values())} relevant images ({theme} theme, {visual_style} style)", agent="coding")
+        except Exception as e:
+            logger.warning(f"Failed to fetch Unsplash images: {e}")
+
     # Inject securely-stored secrets so the coding agent wires them into the backend env only.
     secrets = project.get("secrets") or {}
     if secrets:
@@ -495,9 +432,85 @@ async def coding_node(state: BState) -> BState:
         prompt += f"\n\nRELEVANT SKILLS:\n{skills[:6000]}"
 
     model, provider = await config.get_agent_model("coding")
-    raw = await llm.chat(CODING_SYS, prompt, temperature=0.2, max_tokens=28000, model=model, provider=provider)
-    data = parse_code_output(raw)
-
+    
+    # --- STREAMING CODE GENERATION ---
+    await add_message(project, "agent", "status", "Generating code...", agent="coding")
+    
+    # For a fresh (new) build, clear any stale files from earlier generations BEFORE streaming.
+    if not is_modify and not retry:
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                delete(ProjectFile).filter(ProjectFile.project_id == state["project_id"])
+            )
+            await session.commit()
+    
+    full_output = ""
+    files = []
+    written_paths = set()
+    framework = "vite-express"
+    entrypoint = "frontend/src/main.tsx"
+    summary = ""
+    
+    # Stream chunks and accumulate full output
+    async for chunk in llm.chat_stream(await _get_prompt("coding"), prompt, temperature=0.2, max_tokens=28000, model=model, provider=provider):
+        full_output += chunk
+        
+        # Parse header lines as they appear
+        if not summary and "SUMMARY:" in full_output:
+            sm_match = re.search(r"SUMMARY:\s*(.+?)(?:\n|$)", full_output)
+            if sm_match:
+                summary = sm_match.group(1).strip()
+        
+        # Detect completed files in real-time
+        completed = re.findall(r"===GRIZON_FILE:\s*(.+?)===\s*\n(.*?)\n===GRIZON_END===", full_output, re.DOTALL)
+        for path, content in completed:
+            path = path.strip().lstrip("./").replace("\\", "/")
+            if "\n" in path:
+                path = path.split("\n", 1)[0].strip()
+            if path and path not in written_paths:
+                written_paths.add(path)
+                files.append({"path": path, "content": content})
+                await add_message(project, "agent", "status", f"Writing {path}...", agent="coding")
+                await add_message(project, "agent", "file", path, agent="coding", data={"path": path})
+                # Save to sandbox immediately
+                try:
+                    await mcp.save_code(state["session_id"], path, content, state["client_id"])
+                except Exception as e:
+                    await add_message(project, "agent", "log", f"save_code failed for {path}: {e}", agent="coding")
+                # Save to DB
+                async with AsyncSessionLocal() as session:
+                    result = await session.execute(
+                        select(ProjectFile).filter(
+                            ProjectFile.project_id == state["project_id"],
+                            ProjectFile.path == path
+                        )
+                    )
+                    existing_file = result.scalars().first()
+                    if existing_file:
+                        existing_file.content = content
+                        existing_file.updated_at = datetime.utcnow()
+                    else:
+                        pf = ProjectFile(
+                            id=str(uuid.uuid4()),
+                            project_id=state["project_id"],
+                            path=path,
+                            content=content,
+                            created_at=datetime.utcnow(),
+                            updated_at=datetime.utcnow(),
+                        )
+                        session.add(pf)
+                    await session.commit()
+    
+    # Parse final output for framework/entrypoint
+    fw_match = re.search(r"FRAMEWORK:\s*(\S+)", full_output)
+    if fw_match:
+        framework = fw_match.group(1)
+    ep_match = re.search(r"ENTRYPOINT:\s*(\S+)", full_output)
+    if ep_match:
+        entrypoint = ep_match.group(1)
+    
+    # --- END STREAMING ---
+    
     async with AsyncSessionLocal() as session:
         execution = AgentExecution(
             id=str(uuid.uuid4()),
@@ -510,66 +523,20 @@ async def coding_node(state: BState) -> BState:
         session.add(execution)
         await session.commit()
 
-    if not data.get("files"):
+    if not files:
         await add_message(project, "agent", "status",
                           "Coding agent could not produce valid output.", agent="coding")
         state["files"] = []
         state["exec_ok"] = False
         return state
 
-    files = data.get("files", [])
-    if data.get("entrypoint"):
-        state["entrypoint"] = data.get("entrypoint")
-    elif not state.get("entrypoint"):
-        state["entrypoint"] = "frontend/src/main.tsx"
+    state["entrypoint"] = entrypoint
     state["files"] = files
 
-    # For a fresh (new) build, clear any stale files from earlier generations.
-    if not is_modify and not retry:
-        async with AsyncSessionLocal() as session:
-            await session.execute(
-                delete(ProjectFile).filter(ProjectFile.project_id == state["project_id"])
-            )
-            await session.commit()
-
-    for f in files:
-        path, code = f.get("path"), f.get("content", "")
-        if not path or len(path) > 200 or "\n" in path:
-            continue
-        # stream which file is being written (clickable in the UI)
-        await add_message(project, "agent", "file", path, agent="coding", data={"path": path})
-        try:
-            await mcp.save_code(state["session_id"], path, code, state["client_id"])
-        except Exception as e:
-            await add_message(project, "agent", "log", f"save_code failed for {path}: {e}", agent="coding")
-
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(ProjectFile).filter(
-                    ProjectFile.project_id == state["project_id"],
-                    ProjectFile.path == path
-                )
-            )
-            existing_file = result.scalars().first()
-            if existing_file:
-                existing_file.content = code
-                existing_file.updated_at = datetime.utcnow()
-            else:
-                pf = ProjectFile(
-                    id=str(uuid.uuid4()),
-                    project_id=state["project_id"],
-                    path=path,
-                    content=code,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
-                )
-                session.add(pf)
-            await session.commit()
-
     await add_message(project, "agent", "text",
-                      f"{'Updated' if is_modify else 'Generated'} {len(files)} file(s). {data.get('summary','')}",
+                      f"{'Updated' if is_modify else 'Generated'} {len(files)} file(s). {summary}",
                       agent="coding",
-                      data={"files": [f.get("path") for f in files], "framework": data.get("framework")})
+                      data={"files": [f.get("path") for f in files], "framework": framework})
     return state
 
 
@@ -640,16 +607,6 @@ async def execute_node(state: BState) -> BState:
     return state
 
 
-TESTING_SYS = """You are the Testing Agent of Grizon AI. Given the plan, sandbox logs and whether a
-public preview URL came up, verify whether the app's core functionality works.
-Return ONLY JSON:
-{
-  "status": "PASS" | "FAIL",
-  "tests": [{"name": "string", "status": "PASS" | "FAIL", "error": "string (optional)"}],
-  "prd": "A concise PRD (markdown) describing what was implemented, features, and how to use it."
-}
-Judge FAIL if the preview never came up or logs show fatal errors. Otherwise judge PASS."""
-
 
 async def testing_node(state: BState) -> BState:
     project = await get_project(state["project_id"])
@@ -662,7 +619,7 @@ async def testing_node(state: BState) -> BState:
     prompt = (f"PLAN:\n{state['plan']}\n\nPreview URL present: {bool(state.get('tunnel_url'))}\n"
               f"Execution ok: {state.get('exec_ok')}\n\nSandbox logs:\n{state.get('logs','')[:5000]}")
     model, provider = await config.get_agent_model("testing")
-    data, raw = await llm.chat_json(TESTING_SYS, prompt, temperature=0.1, model=model, provider=provider)
+    data, raw = await llm.chat_json(await _get_prompt("testing"), prompt, temperature=0.1, model=model, provider=provider)
     if not data:
         data = {"status": "PASS" if state.get("tunnel_url") else "FAIL",
                 "tests": [{"name": "Preview available",
