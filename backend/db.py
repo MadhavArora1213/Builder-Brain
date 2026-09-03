@@ -3,7 +3,7 @@ import os
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import text
 from sqlalchemy.pool import NullPool
-from models import Base, User, Project, Message, ProjectFile, Skill, SystemConfig, Event, AuditLog, WorkflowRun, SandboxSession, AgentExecution, GithubConnection
+from models import Base, User, Project, Message, ProjectFile, Skill, SystemConfig, Event, AuditLog, WorkflowRun, SandboxSession, AgentExecution, GithubConnection, SupabaseConnection
 
 # PostgreSQL connection string - use DATABASE_URL env var or construct from components
 DATABASE_URL = os.environ.get("DATABASE_URL") or (
@@ -73,4 +73,5 @@ async def audit(user_id: str, action: str, detail: dict):
 
 MANAGED_COLLECTIONS = ["users", "projects", "messages", "project_files", "skills",
                        "system_config", "events", "audit_logs", "workflow_runs",
-                       "sandbox_sessions", "agent_executions", "github_connections"]
+                       "sandbox_sessions", "agent_executions", "github_connections",
+                       "supabase_connections"]

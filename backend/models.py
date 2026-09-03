@@ -53,6 +53,20 @@ class GithubConnection(Base):
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class SupabaseConnection(Base):
+    __tablename__ = "supabase_connections"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    access_token = Column(Text, nullable=False)
+    project_ref = Column(String, nullable=True)
+    project_name = Column(String, nullable=True)
+    project_url = Column(String, nullable=True)
+    anon_key = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
 class Project(Base):
     __tablename__ = "projects"
     

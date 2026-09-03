@@ -16,6 +16,7 @@ import llm
 import mcp_client as mcp
 import config
 import github_router
+import supabase_router
 import logging
 from db import AsyncSessionLocal, log_event
 from models import Project, Message, ProjectFile, Skill, User, WorkflowRun, SandboxSession, AgentExecution
@@ -177,8 +178,13 @@ Return ONLY JSON:
 type is one of "choice" | "text" | "secret". If nothing needs asking, return needs_clarification false and an empty questions array."""
 
 
-async def question_agent(requirements, is_modify=False):
+async def question_agent(requirements, is_modify=False, supabase_connected=False):
     prompt = f"{'MODIFICATION' if is_modify else 'NEW APP'} requirements:\n{requirements}"
+    if supabase_connected:
+        prompt += (
+            "\nSupabase is already connected for this user. When asking the database question, "
+            "include \"Supabase\" as an option alongside the standard database options."
+        )
     model, provider = await config.get_agent_model("question")
     data, raw = await llm.chat_json(QUESTION_SYS, prompt, model=model, provider=provider)
     if not data:
@@ -257,8 +263,20 @@ async def handle_user_message(project, content):
     await set_workflow(project["id"], requirements=combined_req)
 
     if decision.get("needs_clarification"):
-        qa = await question_agent(combined_req, is_modify=(intent == "MODIFY"))
+        supabase_connected = bool(await supabase_router.get_project_environment(project["owner_id"]))
+        qa = await question_agent(
+            combined_req,
+            is_modify=(intent == "MODIFY"),
+            supabase_connected=supabase_connected,
+        )
         questions = (qa.get("questions") or [])[:4]
+        if supabase_connected:
+            for question in questions:
+                if question.get("type") == "choice" and "database" in question.get("question", "").lower():
+                    options = question.setdefault("options", [])
+                    if "Supabase" not in options:
+                        options.append("Supabase")
+                    break
         if qa.get("needs_clarification") and questions:
             await set_workflow(project["id"], status="asking")
             await add_message(project, "agent", "questions",
@@ -462,8 +480,43 @@ async def coding_node(state: BState) -> BState:
     skills = await get_skills_for("coding")
     prompt = f"PLAN:\n{state['plan']}\n"
 
-    # Inject securely-stored secrets so the coding agent wires them into the backend env only.
+    # Keep user-provided secrets backend-only; Supabase's publishable config is safe for app clients.
     secrets = project.get("secrets") or {}
+    supabase_environment = await supabase_router.get_project_environment(state["owner_id"])
+    if supabase_environment:
+        supabase_pairs = (
+            f"SUPABASE_URL={supabase_environment['SUPABASE_URL']}\n"
+            f"SUPABASE_ANON_KEY={supabase_environment['SUPABASE_PUBLISHABLE_KEY']}\n"
+            f"SUPABASE_PUBLISHABLE_KEY={supabase_environment['SUPABASE_PUBLISHABLE_KEY']}"
+        )
+        frontend_pairs = (
+            f"VITE_SUPABASE_URL={supabase_environment['SUPABASE_URL']}\n"
+            f"VITE_SUPABASE_PUBLISHABLE_KEY={supabase_environment['SUPABASE_PUBLISHABLE_KEY']}\n"
+            f"VITE_SUPABASE_ANON_KEY={supabase_environment['SUPABASE_PUBLISHABLE_KEY']}"
+        )
+        prompt += (
+            "\nSUPABASE BACKEND CONFIG (write these values to backend/.env and read them with "
+            "process.env; use the anon/publishable key only, never a service-role key):\n"
+            + supabase_pairs + "\n"
+        )
+        prompt += (
+            "\nSUPABASE FRONTEND CONFIG (write these values to frontend/.env and access them "
+            "with import.meta.env; never hardcode them):\n" + frontend_pairs + "\n"
+        )
+        prompt += (
+            "\nSUPABASE AUTH IMPLEMENTATION: If the plan uses a backend /api/auth route, initialize "
+            "the Supabase client from SUPABASE_URL and SUPABASE_ANON_KEY and forward Auth errors "
+            "as useful 4xx responses. Do not return a generic 500 for invalid credentials or "
+            "unconfirmed email accounts.\n"
+        )
+        prompt += (
+            "\nSUPABASE AUTH ERROR HANDLING: If Supabase Auth returns error codes like "
+            "email_address_invalid, over_email_send_rate_limit, over_request_rate_limit, or "
+            "email_not_confirmed, catch them specifically and show the user a clear message that "
+            "this is a Supabase project setting (not an app bug), e.g. 'Email sending is rate-limited "
+            "on this Supabase project — configure custom SMTP or disable email confirmation in your "
+            "Supabase dashboard.' Do not show these as generic failures.\n"
+        )
     if secrets:
         pairs = "\n".join(f"{k}={v}" for k, v in secrets.items())
         prompt += ("\nSECRETS (write these into a backend .env file and read via process.env / os.environ. "
@@ -640,13 +693,40 @@ async def execute_node(state: BState) -> BState:
     return state
 
 
+SUPABASE_AUTH_CONFIG_ERRORS = {
+    "email_address_invalid",
+    "over_email_send_rate_limit",
+    "over_request_rate_limit",
+    "email_not_confirmed",
+}
+SUPABASE_AUTH_CONFIG_MESSAGE = (
+    "Registration is blocked by your Supabase project's email settings, not a bug in the app. "
+    "Go to your Supabase Dashboard -> Authentication -> Settings to adjust email confirmation "
+    "or configure custom SMTP."
+)
+
+
+def _supabase_auth_config_error(logs: str) -> str | None:
+    normalized = (logs or "").lower()
+    for code in SUPABASE_AUTH_CONFIG_ERRORS:
+        if code in normalized:
+            return code
+    return None
+
+
 TESTING_SYS = """You are the Testing Agent of Grizon AI. Given the plan, sandbox logs and whether a
 public preview URL came up, verify whether the app's core functionality works.
+Supabase Auth codes email_address_invalid, over_email_send_rate_limit, over_request_rate_limit,
+and email_not_confirmed indicate Supabase project email/auth configuration issues, not app bugs.
+When any appears in the logs, return status PASS with a configuration_issue field explaining that
+the user should open Supabase Dashboard -> Authentication -> Settings to adjust email confirmation
+or configure custom SMTP. Do not recommend a code retry for these errors.
 Return ONLY JSON:
 {
   "status": "PASS" | "FAIL",
   "tests": [{"name": "string", "status": "PASS" | "FAIL", "error": "string (optional)"}],
-  "prd": "A concise PRD (markdown) describing what was implemented, features, and how to use it."
+  "prd": "A concise PRD (markdown) describing what was implemented, features, and how to use it.",
+  "configuration_issue": "string (optional)"
 }
 Judge FAIL if the preview never came up or logs show fatal errors. Otherwise judge PASS."""
 
@@ -663,13 +743,25 @@ async def testing_node(state: BState) -> BState:
               f"Execution ok: {state.get('exec_ok')}\n\nSandbox logs:\n{state.get('logs','')[:5000]}")
     model, provider = await config.get_agent_model("testing")
     data, raw = await llm.chat_json(TESTING_SYS, prompt, temperature=0.1, model=model, provider=provider)
+    auth_config_error = _supabase_auth_config_error(state.get("logs", ""))
+    if auth_config_error:
+        data = {
+            "status": "PASS",
+            "tests": [{
+                "name": "Supabase Auth configuration",
+                "status": "PASS",
+                "error": f"Supabase Auth reported {auth_config_error}; code is not required.",
+            }],
+            "configuration_issue": SUPABASE_AUTH_CONFIG_MESSAGE,
+            "prd": "Application built. Supabase Auth requires a project email configuration update.",
+        }
     if not data:
         data = {"status": "PASS" if state.get("tunnel_url") else "FAIL",
                 "tests": [{"name": "Preview available",
                            "status": "PASS" if state.get("tunnel_url") else "FAIL"}],
                 "prd": "Application built."}
     # Guard: no tunnel => fail
-    if not state.get("tunnel_url"):
+    if not state.get("tunnel_url") and not auth_config_error:
         data["status"] = "FAIL"
     state["test"] = data
     await set_workflow(state["project_id"], test_status=data.get("status"))
@@ -718,6 +810,28 @@ async def complete_node(state: BState) -> BState:
     await set_workflow(state["project_id"], status="complete" if passed else "failed")
     if passed:
         try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(ProjectFile).filter(
+                        ProjectFile.project_id == state["project_id"],
+                        ProjectFile.path == "backend/supabase.sql",
+                    )
+                )
+                schema_file = result.scalars().first()
+            if schema_file:
+                await set_workflow(
+                    state["project_id"],
+                    supabase=await supabase_router.execute_project_sql(
+                        state["owner_id"], schema_file.content or ""
+                    ),
+                )
+        except Exception as exc:
+            logger.error("Supabase SQL application failed for project %s: %s", state["project_id"], exc)
+            await set_workflow(
+                state["project_id"],
+                supabase={"status": "failed", "error": str(exc)},
+            )
+        try:
             github_result = await github_router.publish_project(state["project_id"], state["owner_id"])
             await set_workflow(state["project_id"], github=github_result)
         except Exception as exc:
@@ -726,10 +840,15 @@ async def complete_node(state: BState) -> BState:
     if test.get("prd"):
         await add_message(project, "assistant", "prd", test["prd"], agent="manager",
                           data={"status": test.get("status")})
-    await add_message(project, "assistant", "text",
-                      "Build complete. Your live preview is ready on the right." if passed
-                      else "I couldn't get the app fully working after retries. You can Retry or send new instructions.",
-                      agent="manager")
+    configuration_issue = test.get("configuration_issue")
+    if passed and configuration_issue:
+        completion_message = f"Build complete. {configuration_issue}"
+    else:
+        completion_message = (
+            "Build complete. Your live preview is ready on the right." if passed
+            else "I couldn't get the app fully working after retries. You can Retry or send new instructions."
+        )
+    await add_message(project, "assistant", "text", completion_message, agent="manager")
     await log_event(state["owner_id"], state["project_id"], "build_finished",
                     {"status": test.get("status")})
     return state

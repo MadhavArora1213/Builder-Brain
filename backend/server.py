@@ -17,6 +17,7 @@ from projects_router import router as projects_router
 from builder_router import router as builder_router
 from admin_router import router as admin_router
 from github_router import router as github_router
+from supabase_router import router as supabase_router, oauth_router as supabase_oauth_router
 from seed import seed_skills, seed_config
 
 logging.basicConfig(level=logging.INFO,
@@ -46,6 +47,8 @@ app.include_router(projects_router)
 app.include_router(builder_router)
 app.include_router(admin_router)
 app.include_router(github_router)
+app.include_router(supabase_router)
+app.include_router(supabase_oauth_router)
 
 
 def get_allowed_origins():

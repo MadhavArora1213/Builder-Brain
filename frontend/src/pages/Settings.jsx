@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, Check, Sun, Moon, Github, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, Sun, Moon, Github, Database, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -68,6 +68,10 @@ export default function Settings() {
   const [branch, setBranch] = useState("main");
   const [githubBusy, setGithubBusy] = useState(false);
   const [newRepoName, setNewRepoName] = useState("");
+  const [supabase, setSupabase] = useState(null);
+  const [supabaseProjects, setSupabaseProjects] = useState([]);
+  const [supabaseProject, setSupabaseProject] = useState("");
+  const [supabaseBusy, setSupabaseBusy] = useState(false);
 
   const returnTo = location.state?.returnTo || sessionStorage.getItem("settings-return-path") || "/";
 
@@ -91,6 +95,22 @@ export default function Settings() {
   };
 
   useEffect(() => { loadGithub(); }, []);
+
+  const loadSupabase = async () => {
+    try {
+      const { data } = await api.get("/supabase/connection");
+      setSupabase(data);
+      setSupabaseProject(data.project_ref || "");
+      if (data.connected) {
+        const projects = await api.get("/supabase/projects");
+        setSupabaseProjects(projects.data);
+      }
+    } catch (err) {
+      toast.error(formatApiError(err.response?.data?.detail));
+    }
+  };
+
+  useEffect(() => { loadSupabase(); }, []);
 
   const handleBack = () => {
     const target = location.state?.returnTo || sessionStorage.getItem("settings-return-path") || "/";
@@ -162,6 +182,47 @@ export default function Settings() {
       toast.error(formatApiError(err.response?.data?.detail));
     } finally {
       setGithubBusy(false);
+    }
+  };
+
+  const connectSupabase = async () => {
+    setSupabaseBusy(true);
+    try {
+      sessionStorage.setItem("settings-return-path", returnTo);
+      const { data } = await api.get("/supabase/connect");
+      window.location.href = data.url;
+    } catch (err) {
+      toast.error(formatApiError(err.response?.data?.detail));
+      setSupabaseBusy(false);
+    }
+  };
+
+  const saveSupabase = async () => {
+    if (!supabaseProject) return;
+    setSupabaseBusy(true);
+    try {
+      await api.put("/supabase/connection", { project_ref: supabaseProject });
+      toast.success("Supabase project selected");
+      await loadSupabase();
+    } catch (err) {
+      toast.error(formatApiError(err.response?.data?.detail));
+    } finally {
+      setSupabaseBusy(false);
+    }
+  };
+
+  const disconnectSupabase = async () => {
+    setSupabaseBusy(true);
+    try {
+      await api.delete("/supabase/connection");
+      setSupabase({ connected: false });
+      setSupabaseProjects([]);
+      setSupabaseProject("");
+      toast.success("Supabase disconnected");
+    } catch (err) {
+      toast.error(formatApiError(err.response?.data?.detail));
+    } finally {
+      setSupabaseBusy(false);
     }
   };
 
@@ -265,6 +326,52 @@ export default function Settings() {
                 </div>
                 <button onClick={disconnectGithub} disabled={githubBusy}
                   className="text-sm font-mono underline" style={{ color: "var(--danger)" }}>Disconnect GitHub</button>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="mb-12">
+          <h2 className="font-heading text-2xl font-semibold mb-2" style={{ color: "var(--ink)" }}>
+            Supabase
+          </h2>
+          <p className="text-sm mb-6" style={{ color: "var(--muted-foreground)" }}>
+            Connect Supabase to give generated applications access to your selected project.
+          </p>
+          <div className="rounded-lg border p-6" style={{ backgroundColor: "var(--card)", borderColor: "var(--border)" }}>
+            {!supabase?.connected ? (
+              <button onClick={connectSupabase} disabled={supabaseBusy}
+                className="flex items-center gap-2 text-white rounded-sm px-4 py-2.5 text-sm disabled:opacity-60"
+                style={{ backgroundColor: "var(--forest)" }}>
+                {supabaseBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
+                Connect Supabase
+              </button>
+            ) : (
+              <div className="space-y-4">
+                <p className="font-mono text-sm" style={{ color: "var(--foreground)" }}>
+                  Connected to Supabase
+                  {supabase.project_name ? <> as <strong>{supabase.project_name}</strong></> : ""}
+                </p>
+                {!supabase.project_selected && (
+                  <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
+                    Select a project to make its URL and anon key available to generated apps.
+                  </p>
+                )}
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <select value={supabaseProject} onChange={(e) => setSupabaseProject(e.target.value)}
+                    className="flex-1 border rounded-sm px-3 py-2 text-sm"
+                    style={{ backgroundColor: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}>
+                    <option value="">Select a Supabase project</option>
+                    {supabaseProjects.map((project) => (
+                      <option key={project.ref} value={project.ref}>{project.name} ({project.ref})</option>
+                    ))}
+                  </select>
+                  <button onClick={saveSupabase} disabled={supabaseBusy || !supabaseProject}
+                    className="text-white rounded-sm px-4 py-2 text-sm disabled:opacity-50"
+                    style={{ backgroundColor: "var(--forest)" }}>Save</button>
+                </div>
+                <button onClick={disconnectSupabase} disabled={supabaseBusy}
+                  className="text-sm font-mono underline" style={{ color: "var(--danger)" }}>Disconnect Supabase</button>
               </div>
             )}
           </div>
