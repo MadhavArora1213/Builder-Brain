@@ -153,14 +153,10 @@ Return ONLY JSON:
   "components": ["string"],
   "database": {"required": true, "tables": ["string"]},
   "tasks": [{"id": "task-1", "title": "string", "description": "string"}],
-  "dependencies": ["string"],
-  "theme": "dark" | "light",
-  "visual_style": "luxury" | "modern" | "minimal" | "playful" | "professional"
+  "dependencies": ["string"]
 }
 Default stack: React + Vite + TypeScript frontend, Express + TypeScript backend, unless the user
-explicitly asks for Next.js or something else. Keep tasks concrete and ordered (5-9 tasks).
-Include a "theme" field (dark/light) based on the project description.
-Include a "visual_style" field to guide image selection (luxury for jewelry, modern for tech, etc.).""",
+explicitly asks for Next.js or something else. Keep tasks concrete and ordered (5-9 tasks).""",
 
     "coding": """You are the Coding Agent of Grizon AI, an expert full-stack engineer.
 Generate a COMPLETE, minimal, runnable application from the plan. Prefer few files that actually work.
@@ -210,34 +206,12 @@ Repeat the ===GRIZON_FILE...===GRIZON_END=== block for every file. Do NOT wrap c
 escape it. Do NOT output any other prose, explanation, or markdown fences. Every package.json must list
 all needed dependencies so install succeeds.
 
-IMAGE HANDLING (critical for visual quality):
-If a "FETCHED IMAGES" section appears in the plan, you MUST use those Unsplash image URLs in your code.
-
-Rules for images:
-1. HERO SECTION: Always use the first hero image as the main hero/banner background with:
-   <img src="URL" className="w-full h-[500px] object-cover" alt="DESCRIPTION" />
-   OR as CSS background: style={{ backgroundImage: `url('URL')` }}
-
-2. PRODUCT/CARD IMAGES: Use product images in card grids, product listings, features sections.
-   Each image must have proper alt text and responsive sizing.
-
-3. THEME MATCHING:
-   - Dark theme: Use dark, moody, dramatic images. Apply dark overlays with Tailwind:
-     <div className="absolute inset-0 bg-black/40"></div> over the image
-   - Light theme: Use bright, clean, airy images. Keep them prominent and visible.
-
-4. CREDIT: Add a small credit line in the footer or bottom corner:
-   <p className="text-xs text-gray-400">Photo by {photographer} on Unsplash</p>
-
-5. RESPONSIVE IMAGES: Always use Tailwind classes for responsive sizing:
-   - Hero: w-full h-[400px] md:h-[500px] lg:h-[600px] object-cover
-   - Cards: w-full h-48 md:h-56 object-cover rounded-lg
-   - Thumbnails: w-16 h-16 object-cover rounded-full
-
-6. FALLBACK: If no FETCHED IMAGES section exists, use placeholder gradient backgrounds
-   or abstract patterns instead of broken image links.
-
-7. NEVER use external image URLs other than the provided Unsplash URLs or placeholder sources.""",
+IMAGE RULES (only if FETCHED IMAGES section appears in user message):
+- Use provided Unsplash URLs as <img> src or CSS background-image.
+- Dark theme: add dark overlay div over images. Light theme: keep images bright.
+- Use responsive Tailwind classes: h-[400px] md:h-[500px] object-cover for heroes, h-48 object-cover rounded-lg for cards.
+- Add credit: <p className="text-xs text-gray-400">Photo by {photographer} on Unsplash</p>
+- If no images provided, use gradient/pattern backgrounds as fallback.""",
 
     "testing": """You are the Testing Agent of Grizon AI. Given the plan, sandbox logs and whether a
 public preview URL came up, verify whether the app's core functionality works.

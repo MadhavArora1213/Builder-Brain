@@ -6,10 +6,10 @@ The build/test loop is a LangGraph StateGraph run in a background task.
 import asyncio
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import TypedDict, List
 
-from sqlalchemy import select, update, delete, func
+from sqlalchemy import select, delete
 from langgraph.graph import StateGraph, END
 
 import llm
@@ -328,24 +328,23 @@ class BState(TypedDict, total=False):
 
 
 def parse_code_output(raw: str) -> dict:
-    import re
     fw = re.search(r"FRAMEWORK:\s*([^\s]+)", raw)
     ep = re.search(r"ENTRYPOINT:\s*([^\s]+)", raw)
     sm = re.search(r"SUMMARY:\s*(.+)", raw)
     files = []
-    for m in re.finditer(r"===GRIZON_FILE:\s*(.+?)\s*===\s*\n(.*?)\s*\n?\s*===GRIZON_END===", raw, re.DOTALL):
+    for m in re.finditer(r"===GRIZON_FILE:\s*(.+?)\s*===\s*\n(.*?)===GRIZON_END===", raw, re.DOTALL):
         raw_path = m.group(1).strip()
         content = m.group(2)
-        # If path contains newlines, the LLM put content in the path field.
-        # Take only the first line as path, rest as content.
         if "\n" in raw_path:
             lines = raw_path.split("\n", 1)
             raw_path = lines[0].strip()
             content = lines[1] + content
-        # Truncate very long paths (likely garbage)
         if len(raw_path) > 200:
             raw_path = raw_path[:200]
-        files.append({"path": raw_path, "content": content})
+        raw_path = raw_path.strip().lstrip("./").replace("\\", "/")
+        content = content.strip()
+        if raw_path:
+            files.append({"path": raw_path, "content": content})
     return {
         "framework": fw.group(1) if fw else "vite-express",
         "entrypoint": ep.group(1) if ep else "frontend/src/main.tsx",
@@ -370,32 +369,14 @@ async def coding_node(state: BState) -> BState:
     skills = await get_skills_for("coding")
     prompt = f"PLAN:\n{state['plan']}\n"
 
-    # Fetch relevant images from Unsplash based on project requirements
+    # Fetch relevant images from Unsplash (best-effort, non-blocking)
     requirements = wf.get('requirements', '') or state.get('plan', {}).get('goal', '')
     if requirements and not is_modify and not retry:
-        await add_message(project, "agent", "status", "Fetching relevant images for your project...", agent="coding")
         try:
-            # Get theme and visual style from plan
-            plan = state.get('plan', {})
-            theme = plan.get('theme', 'light')
-            visual_style = plan.get('visual_style', 'modern')
-            
-            # Build search query based on visual style and requirements
-            search_query = requirements
-            if visual_style == "luxury":
-                search_query = f"{requirements} luxury elegant premium"
-            elif visual_style == "minimal":
-                search_query = f"{requirements} minimal clean simple"
-            elif visual_style == "playful":
-                search_query = f"{requirements} colorful fun vibrant"
-            elif visual_style == "professional":
-                search_query = f"{requirements} professional corporate modern"
-            
-            images = await unsplash.get_curated_images(search_query, theme=theme, visual_style=visual_style, count=8)
+            images = await unsplash.get_curated_images(requirements, theme="light", visual_style="modern", count=6)
             images_text = unsplash.format_images_for_prompt(images)
             if images_text:
                 prompt += images_text
-                await add_message(project, "agent", "status", f"Fetched {sum(len(v) for v in images.values())} relevant images ({theme} theme, {visual_style} style)", agent="coding")
         except Exception as e:
             logger.warning(f"Failed to fetch Unsplash images: {e}")
 
@@ -432,85 +413,23 @@ async def coding_node(state: BState) -> BState:
         prompt += f"\n\nRELEVANT SKILLS:\n{skills[:6000]}"
 
     model, provider = await config.get_agent_model("coding")
-    
-    # --- STREAMING CODE GENERATION ---
-    await add_message(project, "agent", "status", "Generating code...", agent="coding")
-    
-    # For a fresh (new) build, clear any stale files from earlier generations BEFORE streaming.
+
+    # For a fresh (new) build, clear any stale files from earlier generations.
     if not is_modify and not retry:
         async with AsyncSessionLocal() as session:
             await session.execute(
                 delete(ProjectFile).filter(ProjectFile.project_id == state["project_id"])
             )
             await session.commit()
-    
+
+    # Stream for UI feedback, then parse full output at the end
     full_output = ""
-    files = []
-    written_paths = set()
-    framework = "vite-express"
-    entrypoint = "frontend/src/main.tsx"
-    summary = ""
-    
-    # Stream chunks and accumulate full output
     async for chunk in llm.chat_stream(await _get_prompt("coding"), prompt, temperature=0.2, max_tokens=28000, model=model, provider=provider):
         full_output += chunk
-        
-        # Parse header lines as they appear
-        if not summary and "SUMMARY:" in full_output:
-            sm_match = re.search(r"SUMMARY:\s*(.+?)(?:\n|$)", full_output)
-            if sm_match:
-                summary = sm_match.group(1).strip()
-        
-        # Detect completed files in real-time
-        completed = re.findall(r"===GRIZON_FILE:\s*(.+?)===\s*\n(.*?)\s*\n?\s*===GRIZON_END===", full_output, re.DOTALL)
-        for path, content in completed:
-            path = path.strip().lstrip("./").replace("\\", "/")
-            if "\n" in path:
-                path = path.split("\n", 1)[0].strip()
-            if path and path not in written_paths:
-                written_paths.add(path)
-                files.append({"path": path, "content": content})
-                await add_message(project, "agent", "status", f"Writing {path}...", agent="coding")
-                await add_message(project, "agent", "file", path, agent="coding", data={"path": path})
-                # Save to sandbox immediately
-                try:
-                    await mcp.save_code(state["session_id"], path, content, state["client_id"])
-                except Exception as e:
-                    await add_message(project, "agent", "log", f"save_code failed for {path}: {e}", agent="coding")
-                # Save to DB
-                async with AsyncSessionLocal() as session:
-                    result = await session.execute(
-                        select(ProjectFile).filter(
-                            ProjectFile.project_id == state["project_id"],
-                            ProjectFile.path == path
-                        )
-                    )
-                    existing_file = result.scalars().first()
-                    if existing_file:
-                        existing_file.content = content
-                        existing_file.updated_at = datetime.utcnow()
-                    else:
-                        pf = ProjectFile(
-                            id=str(uuid.uuid4()),
-                            project_id=state["project_id"],
-                            path=path,
-                            content=content,
-                            created_at=datetime.utcnow(),
-                            updated_at=datetime.utcnow(),
-                        )
-                        session.add(pf)
-                    await session.commit()
-    
-    # Parse final output for framework/entrypoint
-    fw_match = re.search(r"FRAMEWORK:\s*(\S+)", full_output)
-    if fw_match:
-        framework = fw_match.group(1)
-    ep_match = re.search(r"ENTRYPOINT:\s*(\S+)", full_output)
-    if ep_match:
-        entrypoint = ep_match.group(1)
-    
-    # --- END STREAMING ---
-    
+
+    # Parse the complete output reliably
+    data = parse_code_output(full_output)
+
     async with AsyncSessionLocal() as session:
         execution = AgentExecution(
             id=str(uuid.uuid4()),
@@ -523,20 +442,57 @@ async def coding_node(state: BState) -> BState:
         session.add(execution)
         await session.commit()
 
-    if not files:
+    if not data.get("files"):
         await add_message(project, "agent", "status",
                           "Coding agent could not produce valid output.", agent="coding")
         state["files"] = []
         state["exec_ok"] = False
         return state
 
-    state["entrypoint"] = entrypoint
+    files = data.get("files", [])
+    if data.get("entrypoint"):
+        state["entrypoint"] = data.get("entrypoint")
+    elif not state.get("entrypoint"):
+        state["entrypoint"] = "frontend/src/main.tsx"
     state["files"] = files
 
+    # Save files to sandbox and DB
+    for f in files:
+        path, code = f.get("path"), f.get("content", "")
+        if not path:
+            continue
+        await add_message(project, "agent", "file", path, agent="coding", data={"path": path})
+        try:
+            await mcp.save_code(state["session_id"], path, code, state["client_id"])
+        except Exception as e:
+            await add_message(project, "agent", "log", f"save_code failed for {path}: {e}", agent="coding")
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(ProjectFile).filter(
+                    ProjectFile.project_id == state["project_id"],
+                    ProjectFile.path == path
+                )
+            )
+            existing_file = result.scalars().first()
+            if existing_file:
+                existing_file.content = code
+                existing_file.updated_at = datetime.utcnow()
+            else:
+                pf = ProjectFile(
+                    id=str(uuid.uuid4()),
+                    project_id=state["project_id"],
+                    path=path,
+                    content=code,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+                session.add(pf)
+            await session.commit()
+
     await add_message(project, "agent", "text",
-                      f"{'Updated' if is_modify else 'Generated'} {len(files)} file(s). {summary}",
+                      f"{'Updated' if is_modify else 'Generated'} {len(files)} file(s). {data.get('summary','')}",
                       agent="coding",
-                      data={"files": [f.get("path") for f in files], "framework": framework})
+                      data={"files": [f.get("path") for f in files], "framework": data.get("framework")})
     return state
 
 
