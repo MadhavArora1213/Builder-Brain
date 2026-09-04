@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { toast } from "sonner";
-import { Database, BookText, Users, FolderGit2, MessageSquare, Cpu, Plus, Trash2, Edit3, X, Bot, KeyRound, Save, LayoutDashboard, Settings, ChevronRight, FileText, RotateCcw } from "lucide-react";
+import { Database, BookText, Users, FolderGit2, MessageSquare, Cpu, Plus, Trash2, Edit3, X, Bot, KeyRound, Save, LayoutDashboard, Settings, ChevronRight, FileText, RotateCcw, Search, ChevronDown } from "lucide-react";
+import { Command, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import api from "@/lib/api";
 import Nav from "@/components/Nav";
 
@@ -153,6 +154,141 @@ const AGENT_LIST = [
   { key: "testing", label: "Testing Agent" },
 ];
 
+function ModelSelect({ models, value, onChange, disabled, isLoading }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const triggerRef = useRef(null);
+  const listRef = useRef(null);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handle = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false);
+        setSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  const selected = models.find((m) => m.id === value);
+
+  const filtered = search.trim()
+    ? models.filter((m) => {
+        const q = search.toLowerCase();
+        return (
+          m.id.toLowerCase().includes(q) ||
+          (m.name || "").toLowerCase().includes(q)
+        );
+      })
+    : models;
+
+  const handleSelect = useCallback(
+    (modelId) => {
+      onChange(modelId);
+      setOpen(false);
+      setSearch("");
+      triggerRef.current?.focus();
+    },
+    [onChange]
+  );
+
+  const handleKeyDown = useCallback(
+    (e) => {
+      if (disabled) return;
+      if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === " ")) {
+        e.preventDefault();
+        setOpen(true);
+      }
+    },
+    [disabled, open]
+  );
+
+  return (
+    <div ref={containerRef} className="relative flex-1">
+      <button
+        ref={triggerRef}
+        type="button"
+        disabled={disabled}
+        onClick={() => { if (!disabled) setOpen(!open); }}
+        onKeyDown={handleKeyDown}
+        data-testid="model-select-trigger"
+        className="w-full border rounded-sm px-3 py-2 text-sm font-mono text-left flex items-center justify-between gap-2 focus:outline-none focus:ring-2 disabled:opacity-50"
+        style={{ backgroundColor: "var(--parchment)", borderColor: "var(--border)", color: selected ? "var(--foreground)" : "var(--muted-foreground)" }}>
+        <span className="truncate">
+          {isLoading ? "Loading models\u2026" : selected ? `${selected.name || selected.id}${selected.context_length ? ` (${(selected.context_length / 1000).toFixed(0)}k)` : ""}` : "Select a model"}
+        </span>
+        <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} style={{ color: "var(--muted-foreground)" }} />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 border rounded-sm shadow-lg overflow-hidden"
+          style={{ backgroundColor: "var(--card)", borderColor: "var(--border)" }}>
+          <Command shouldFilter={false}>
+            <div className="flex items-center border-b px-3" style={{ borderColor: "var(--sand)" }}>
+              <Search className="mr-2 h-4 w-4 shrink-0" style={{ color: "var(--muted-foreground)" }} />
+              <input
+                autoFocus
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setOpen(false);
+                    setSearch("");
+                    triggerRef.current?.focus();
+                  } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                    e.preventDefault();
+                    const list = listRef.current;
+                    if (!list) return;
+                    const items = list.querySelectorAll("[cmdk-item]");
+                    if (!items.length) return;
+                    const active = list.querySelector("[cmdk-item][data-selected='true']") || items[0];
+                    let idx = Array.from(items).indexOf(active);
+                    idx = e.key === "ArrowDown" ? (idx + 1) % items.length : (idx - 1 + items.length) % items.length;
+                    items[idx]?.scrollIntoView({ block: "nearest" });
+                    items[idx]?.click();
+                  } else if (e.key === "Enter") {
+                    e.preventDefault();
+                    const list = listRef.current;
+                    const active = list?.querySelector("[cmdk-item][data-selected='true']");
+                    if (active) active.click();
+                  }
+                }}
+                placeholder="Search models\u2026 (e.g. gpt, claude, gemini)"
+                className="flex h-10 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground font-mono"
+                style={{ color: "var(--foreground)" }}
+              />
+            </div>
+            <CommandList ref={listRef} className="max-h-[280px] overflow-y-auto">
+              <CommandEmpty>
+                <span className="font-mono text-xs" style={{ color: "var(--muted-foreground)" }}>No models found.</span>
+              </CommandEmpty>
+              <CommandGroup>
+                {filtered.map((m) => (
+                  <CommandItem
+                    key={m.id}
+                    value={m.id}
+                    onSelect={handleSelect}
+                    className="font-mono text-xs cursor-pointer px-3 py-2"
+                    style={{ color: "var(--foreground)" }}>
+                    <span className="truncate">
+                      {m.name || m.id}
+                      {m.context_length ? <span style={{ color: "var(--muted-foreground)" }}> ({(m.context_length / 1000).toFixed(0)}k)</span> : null}
+                    </span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Agents() {
   const [models, setModels] = useState({});
   const [saving, setSaving] = useState(false);
@@ -219,16 +355,13 @@ function Agents() {
                 <option value="sarvam">Sarvam</option>
                 <option value="openrouter">OpenRouter</option>
               </select>
-              <select data-testid={`model-${a.key}`} value={currentModel}
-                onChange={(e) => setModels({ ...models, [a.key]: { ...models[a.key], model: e.target.value, provider: currentProvider } })}
+              <ModelSelect
+                models={options}
+                value={currentModel}
+                onChange={(modelId) => setModels({ ...models, [a.key]: { ...models[a.key], model: modelId, provider: currentProvider } })}
                 disabled={isLoading}
-                className="border rounded-sm px-3 py-2 text-sm font-mono flex-1 focus:outline-none focus:ring-2"
-                style={{ backgroundColor: "var(--parchment)", borderColor: "var(--border)", color: "var(--foreground)" }}>
-                <option value="">{isLoading ? "Loading models…" : "Select a model"}</option>
-                {options.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name || m.id}{m.context_length ? ` (${(m.context_length / 1000).toFixed(0)}k)` : ""}</option>
-                ))}
-              </select>
+                isLoading={isLoading}
+              />
             </div>
           );
         })}
